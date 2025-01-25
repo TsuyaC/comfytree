@@ -1,0 +1,5 @@
+.vscode
+.backup
+features.md
+*.pdb
+*.exe
