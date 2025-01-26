@@ -60,6 +60,7 @@ VulkanContext :: struct {
     queueIndices:           [QueueFamily]int,
     queues:                 [QueueFamily]vk.Queue,
     swapchain:              Swapchain,
+    oldSwapchain:           Swapchain,
     pipeline:               Pipeline,
     commandPool:            vk.CommandPool,
     commandBuffers:         [MAX_FRAMES_IN_FLIGHT]vk.CommandBuffer,
@@ -729,14 +730,14 @@ CreateSyncObjects :: proc(using ctx: ^VulkanContext)
 DrawFrame :: proc(using ctx: ^VulkanContext, vertices: []Vertex, indices: []u16)
 {
     vk.WaitForFences(device, 1, &inFlight[curFrame], true, max(u64))
+    
     imageIndex: u32
 
     res := vk.AcquireNextImageKHR(device, swapchain.handle, max(u64), imageAvailable[curFrame], {}, &imageIndex)
-    if res == .ERROR_OUT_OF_DATE_KHR || res == .SUBOPTIMAL_KHR || framebufferResized{
-        framebufferResized = false
+    if res == .ERROR_OUT_OF_DATE_KHR {
         RecreateSwapchain(ctx)
         return
-    } else if res != .SUCCESS {
+    } else if res != .SUCCESS && res != .SUBOPTIMAL_KHR {
         LogError("Failed to acquire Swapchain Image!\n")
         os.exit(1)
     }
@@ -776,7 +777,14 @@ DrawFrame :: proc(using ctx: ^VulkanContext, vertices: []Vertex, indices: []u16)
     presentInfo.pImageIndices = &imageIndex
     presentInfo.pResults = nil
 
-    vk.QueuePresentKHR(queues[.Present], &presentInfo)
+    res = vk.QueuePresentKHR(queues[.Present], &presentInfo)
+    if (res == .ERROR_OUT_OF_DATE_KHR || res == .SUBOPTIMAL_KHR || framebufferResized) {
+        framebufferResized = false
+        RecreateSwapchain(ctx)
+    } else if res != .SUCCESS {
+        LogError("Failed to present Swapchain Image!\n")
+        os.exit(1)
+    }
     curFrame = (curFrame + 1) % MAX_FRAMES_IN_FLIGHT
 }
 
@@ -1068,17 +1076,26 @@ CreateSwapchain :: proc(using ctx: ^VulkanContext)
 
 RecreateSwapchain :: proc(using ctx: ^VulkanContext)
 {
-    width, height := glfw.GetFramebufferSize(window)
-    for width == 0 && height == 0
+    width, height: i32 = 0, 0
+    width, height = glfw.GetFramebufferSize(window)
+    for width == 0 || height == 0
     {
-        width, height = glfw.GetFramebufferSize(window)
         glfw.WaitEvents()
+        width, height = glfw.GetFramebufferSize(window)
     }
     vk.DeviceWaitIdle(device)
 
     CleanupSwapchain(ctx)
 
+    QuerySwapchainDetails(ctx, physicalDevice)
+
     CreateSwapchain(ctx)
+
+    if (swapchain.format != oldSwapchain.format) {
+        vk.DestroyRenderPass(device, pipeline.renderPass, nil)
+        CreateRenderPass(ctx)
+    }
+
     CreateImageViews(ctx)
     CreateFramebuffers(ctx)
 }
