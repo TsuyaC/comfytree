@@ -59,7 +59,7 @@ VulkanContext :: struct {
     surface:                vk.SurfaceKHR,
     queueIndices:           [QueueFamily]int,
     queues:                 [QueueFamily]vk.Queue,
-    swapChain:              SwapChain,
+    swapchain:              Swapchain,
     pipeline:               Pipeline,
     commandPool:            vk.CommandPool,
     commandBuffers:         [MAX_FRAMES_IN_FLIGHT]vk.CommandBuffer,
@@ -96,7 +96,7 @@ QueueError :: enum {
 }
 
 @(private="file")
-SwapChain :: struct {
+Swapchain :: struct {
     handle:         vk.SwapchainKHR,
     images:         []vk.Image,
     imageViews:     []vk.ImageView,
@@ -104,12 +104,12 @@ SwapChain :: struct {
     extent:         vk.Extent2D,
     presentMode:    vk.PresentModeKHR,
     imageCount:     u32,
-    support:        SwapChainDetails,
+    support:        SwapchainDetails,
     framebuffers:   []vk.Framebuffer
 }
 
 @(private="file")
-SwapChainDetails :: struct {
+SwapchainDetails :: struct {
     capabilities:   vk.SurfaceCapabilitiesKHR,
     formats:        []vk.SurfaceFormatKHR,
     presentModes:   []vk.PresentModeKHR
@@ -163,7 +163,7 @@ InitVulkan :: proc(using ctx: ^VulkanContext, vertices: []Vertex, indices: []u16
         vk.GetDeviceQueue(device, u32(queueIndices[f]), 0, &q)
     }
 
-    CreateSwapChain(ctx)
+    CreateSwapchain(ctx)
     CreateImageViews(ctx)
     CreateGraphicsPipeline(ctx, "shader.vert", "shader.frag")
     CreateFramebuffers(ctx)
@@ -264,14 +264,14 @@ CreateGraphicsPipeline :: proc(using ctx: ^VulkanContext, vsName: string, fsName
     viewport: vk.Viewport
     viewport.x = 0.0
     viewport.y = 0.0
-    viewport.width = cast(f32)swapChain.extent.width
-    viewport.height = cast(f32)swapChain.extent.height
+    viewport.width = cast(f32)swapchain.extent.width
+    viewport.height = cast(f32)swapchain.extent.height
     viewport.minDepth = 0.0
     viewport.maxDepth = 1.0
 
     scissor: vk.Rect2D
     scissor.offset = {0, 0}
-    scissor.extent = swapChain.extent
+    scissor.extent = swapchain.extent
 
     viewportState: vk.PipelineViewportStateCreateInfo
     viewportState.sType = .PIPELINE_VIEWPORT_STATE_CREATE_INFO
@@ -370,7 +370,7 @@ CreateGraphicsPipeline :: proc(using ctx: ^VulkanContext, vsName: string, fsName
 CreateRenderPass :: proc(using ctx: ^VulkanContext)
 {
     colorAttachment: vk.AttachmentDescription
-    colorAttachment.format = swapChain.format.format
+    colorAttachment.format = swapchain.format.format
     colorAttachment.samples = {._1}
     colorAttachment.loadOp = .CLEAR
     colorAttachment.storeOp = .STORE
@@ -523,9 +523,9 @@ RecordCommandBuffer :: proc(using ctx: ^VulkanContext, buffer: vk.CommandBuffer,
     renderPassInfo: vk.RenderPassBeginInfo
     renderPassInfo.sType = .RENDER_PASS_BEGIN_INFO
     renderPassInfo.renderPass = pipeline.renderPass
-    renderPassInfo.framebuffer = swapChain.framebuffers[imageIndex]
+    renderPassInfo.framebuffer = swapchain.framebuffers[imageIndex]
     renderPassInfo.renderArea.offset = {0, 0}
-    renderPassInfo.renderArea.extent = swapChain.extent
+    renderPassInfo.renderArea.extent = swapchain.extent
 
     clearColor: vk.ClearValue
     clearColor.color.float32 = [4]f32{0.0, 0.0, 0.0, 1.0}
@@ -544,15 +544,15 @@ RecordCommandBuffer :: proc(using ctx: ^VulkanContext, buffer: vk.CommandBuffer,
     viewport: vk.Viewport
     viewport.x = 0.0
     viewport.y = 0.0
-    viewport.width = f32(swapChain.extent.width)
-    viewport.height = f32(swapChain.extent.height)
+    viewport.width = f32(swapchain.extent.width)
+    viewport.height = f32(swapchain.extent.height)
     viewport.minDepth = 0.0
     viewport.maxDepth = 1.0
     vk.CmdSetViewport(buffer, 0, 1, &viewport)
 
     scissor: vk.Rect2D
     scissor.offset = {0, 0}
-    scissor.extent = swapChain.extent
+    scissor.extent = swapchain.extent
     vk.CmdSetScissor(buffer, 0, 1, &scissor)
 
     vk.CmdDrawIndexed(buffer, cast(u32)indexBuffer.length, 1, 0, 0, 0)
@@ -731,7 +731,7 @@ DrawFrame :: proc(using ctx: ^VulkanContext, vertices: []Vertex, indices: []u16)
     vk.WaitForFences(device, 1, &inFlight[curFrame], true, max(u64))
     imageIndex: u32
 
-    res := vk.AcquireNextImageKHR(device, swapChain.handle, max(u64), imageAvailable[curFrame], {}, &imageIndex)
+    res := vk.AcquireNextImageKHR(device, swapchain.handle, max(u64), imageAvailable[curFrame], {}, &imageIndex)
     if res == .ERROR_OUT_OF_DATE_KHR || res == .SUBOPTIMAL_KHR || framebufferResized{
         framebufferResized = false
         RecreateSwapchain(ctx)
@@ -770,9 +770,9 @@ DrawFrame :: proc(using ctx: ^VulkanContext, vertices: []Vertex, indices: []u16)
     presentInfo.waitSemaphoreCount = 1
     presentInfo.pWaitSemaphores = &signalSemaphores[0]
 
-    swapChains := [?]vk.SwapchainKHR{swapChain.handle}
+    swapchains := [?]vk.SwapchainKHR{swapchain.handle}
     presentInfo.swapchainCount = 1
-    presentInfo.pSwapchains = &swapChains[0]
+    presentInfo.pSwapchains = &swapchains[0]
     presentInfo.pImageIndices = &imageIndex
     presentInfo.pResults = nil
 
@@ -961,7 +961,7 @@ CreateLogicalDevice :: proc(using ctx: ^VulkanContext)
 
 CreateImageViews :: proc(using ctx: ^VulkanContext)
 {
-    using ctx.swapChain
+    using ctx.swapchain
 
     imageViews = make([]vk.ImageView, len(images))
 
@@ -991,42 +991,50 @@ CreateImageViews :: proc(using ctx: ^VulkanContext)
 
 QuerySwapchainDetails :: proc(using ctx: ^VulkanContext, dev: vk.PhysicalDevice)
 {
-    vk.GetPhysicalDeviceSurfaceCapabilitiesKHR(dev, surface, &swapChain.support.capabilities)
+    vk.GetPhysicalDeviceSurfaceCapabilitiesKHR(dev, surface, &swapchain.support.capabilities)
 
     formatCount: u32
     vk.GetPhysicalDeviceSurfaceFormatsKHR(dev, surface, &formatCount, nil)
     if formatCount > 0 {
-        swapChain.support.formats = make([]vk.SurfaceFormatKHR, formatCount)
-        vk.GetPhysicalDeviceSurfaceFormatsKHR(dev, surface, &formatCount, raw_data(swapChain.support.formats))
+        swapchain.support.formats = make([]vk.SurfaceFormatKHR, formatCount)
+        vk.GetPhysicalDeviceSurfaceFormatsKHR(dev, surface, &formatCount, raw_data(swapchain.support.formats))
     }
 
     presentModeCount: u32
     vk.GetPhysicalDeviceSurfacePresentModesKHR(dev, surface, &presentModeCount, nil)
     if presentModeCount > 0 {
-        swapChain.support.presentModes = make([]vk.PresentModeKHR, presentModeCount)
-        vk.GetPhysicalDeviceSurfacePresentModesKHR(dev, surface, &presentModeCount, raw_data(swapChain.support.presentModes))
+        swapchain.support.presentModes = make([]vk.PresentModeKHR, presentModeCount)
+        vk.GetPhysicalDeviceSurfacePresentModesKHR(dev, surface, &presentModeCount, raw_data(swapchain.support.presentModes))
     }
 }
 
-CreateSwapChain :: proc(using ctx: ^VulkanContext)
-{
-    using ctx.swapChain.support
-    swapChain.format        = ChooseSurfaceFormat(ctx)
-    swapChain.presentMode   = ChoosePresentMode(ctx)
-    swapChain.extent        = ChooseSwapExtent(ctx)
-    swapChain.imageCount    = capabilities.minImageCount + 1
 
-    if capabilities.maxImageCount > 0 && swapChain.imageCount > capabilities.maxImageCount{
-        swapChain.imageCount = capabilities.maxImageCount
+// ███████ ██     ██  █████  ██████   ██████ ██   ██  █████  ██ ███    ██ 
+// ██      ██     ██ ██   ██ ██   ██ ██      ██   ██ ██   ██ ██ ████   ██ 
+// ███████ ██  █  ██ ███████ ██████  ██      ███████ ███████ ██ ██ ██  ██ 
+//      ██ ██ ███ ██ ██   ██ ██      ██      ██   ██ ██   ██ ██ ██  ██ ██ 
+// ███████  ███ ███  ██   ██ ██       ██████ ██   ██ ██   ██ ██ ██   ████ 
+
+
+CreateSwapchain :: proc(using ctx: ^VulkanContext)
+{
+    using ctx.swapchain.support
+    swapchain.format        = ChooseSurfaceFormat(ctx)
+    swapchain.presentMode   = ChoosePresentMode(ctx)
+    swapchain.extent        = ChooseSwapExtent(ctx)
+    swapchain.imageCount    = capabilities.minImageCount + 1
+
+    if capabilities.maxImageCount > 0 && swapchain.imageCount > capabilities.maxImageCount{
+        swapchain.imageCount = capabilities.maxImageCount
     }
 
     createInfo: vk.SwapchainCreateInfoKHR
     createInfo.sType = .SWAPCHAIN_CREATE_INFO_KHR
     createInfo.surface = surface
-    createInfo.minImageCount = swapChain.imageCount
-    createInfo.imageFormat = swapChain.format.format
-    createInfo.imageColorSpace = swapChain.format.colorSpace
-    createInfo.imageExtent = swapChain.extent
+    createInfo.minImageCount = swapchain.imageCount
+    createInfo.imageFormat = swapchain.format.format
+    createInfo.imageColorSpace = swapchain.format.colorSpace
+    createInfo.imageExtent = swapchain.extent
     createInfo.imageArrayLayers = 1
     createInfo.imageUsage = {.COLOR_ATTACHMENT}
 
@@ -1044,18 +1052,18 @@ CreateSwapChain :: proc(using ctx: ^VulkanContext)
 
     createInfo.preTransform = capabilities.currentTransform
     createInfo.compositeAlpha = {.OPAQUE}
-    createInfo.presentMode = swapChain.presentMode
+    createInfo.presentMode = swapchain.presentMode
     createInfo.clipped = true
     createInfo.oldSwapchain = vk.SwapchainKHR{}
 
-    if res := vk.CreateSwapchainKHR(device, &createInfo, nil, &swapChain.handle); res != .SUCCESS {
+    if res := vk.CreateSwapchainKHR(device, &createInfo, nil, &swapchain.handle); res != .SUCCESS {
         LogError("Failed to create Swapchain!\n")
         os.exit(1)
     }
 
-    vk.GetSwapchainImagesKHR(device, swapChain.handle, &swapChain.imageCount, nil)
-    swapChain.images = make([]vk.Image, swapChain.imageCount)
-    vk.GetSwapchainImagesKHR(device, swapChain.handle, &swapChain.imageCount, raw_data(swapChain.images))
+    vk.GetSwapchainImagesKHR(device, swapchain.handle, &swapchain.imageCount, nil)
+    swapchain.images = make([]vk.Image, swapchain.imageCount)
+    vk.GetSwapchainImagesKHR(device, swapchain.handle, &swapchain.imageCount, raw_data(swapchain.images))
 }
 
 RecreateSwapchain :: proc(using ctx: ^VulkanContext)
@@ -1070,28 +1078,28 @@ RecreateSwapchain :: proc(using ctx: ^VulkanContext)
 
     CleanupSwapchain(ctx)
 
-    CreateSwapChain(ctx)
+    CreateSwapchain(ctx)
     CreateImageViews(ctx)
     CreateFramebuffers(ctx)
 }
 
 CleanupSwapchain :: proc(using ctx: ^VulkanContext)
 {
-    for f in swapChain.framebuffers
+    for f in swapchain.framebuffers
     {
         vk.DestroyFramebuffer(device, f, nil)
     }
-    for view in swapChain.imageViews
+    for view in swapchain.imageViews
     {
         vk.DestroyImageView(device, view, nil)
     }
-    vk.DestroySwapchainKHR(device, swapChain.handle, nil)
+    vk.DestroySwapchainKHR(device, swapchain.handle, nil)
 }
 
 CreateFramebuffers :: proc(using ctx: ^VulkanContext)
 {
-    swapChain.framebuffers = make([]vk.Framebuffer, len(swapChain.imageViews))
-    for v, i in swapChain.imageViews
+    swapchain.framebuffers = make([]vk.Framebuffer, len(swapchain.imageViews))
+    for v, i in swapchain.imageViews
     {
         attachments := [?]vk.ImageView{v}
 
@@ -1100,11 +1108,11 @@ CreateFramebuffers :: proc(using ctx: ^VulkanContext)
         framebufferInfo.renderPass = pipeline.renderPass
         framebufferInfo.attachmentCount = 1
         framebufferInfo.pAttachments = &attachments[0]
-        framebufferInfo.width = swapChain.extent.width
-        framebufferInfo.height = swapChain.extent.height
+        framebufferInfo.width = swapchain.extent.width
+        framebufferInfo.height = swapchain.extent.height
         framebufferInfo.layers = 1
 
-        if res := vk.CreateFramebuffer(device, &framebufferInfo, nil, &swapChain.framebuffers[i]); res != .SUCCESS {
+        if res := vk.CreateFramebuffer(device, &framebufferInfo, nil, &swapchain.framebuffers[i]); res != .SUCCESS {
             LogError(fmt.tprintf("Failed to create Framebuffer%d\n", i))
             os.exit(1)
         }
@@ -1142,7 +1150,7 @@ PickDevice :: proc(using ctx: ^VulkanContext)
         if !CheckDeviceExtensionSupport(dev) do return 0
 
         QuerySwapchainDetails(ctx, dev)
-        if len(swapChain.support.formats) == 0 || len(swapChain.support.presentModes) == 0 do return 0
+        if len(swapchain.support.formats) == 0 || len(swapchain.support.presentModes) == 0 do return 0
 
         return score
     }
@@ -1196,18 +1204,18 @@ FindQueueFamilies :: proc(using ctx: ^VulkanContext)
 
 ChooseSurfaceFormat :: proc(using ctx: ^VulkanContext) -> vk.SurfaceFormatKHR
 {
-    for v in swapChain.support.formats
+    for v in swapchain.support.formats
     {
         if v.format == .B8G8R8_SRGB && v.colorSpace == .SRGB_NONLINEAR do return v
     }
 
-    return swapChain.support.formats[0]
+    return swapchain.support.formats[0]
 }
 
 ChoosePresentMode :: proc(using ctx: ^VulkanContext) -> vk.PresentModeKHR
 {
     // Prefer Mailbox, otherwise default to FIFO
-    for v in swapChain.support.presentModes
+    for v in swapchain.support.presentModes
     {
         if v == .MAILBOX do return v
     }
@@ -1218,16 +1226,16 @@ ChoosePresentMode :: proc(using ctx: ^VulkanContext) -> vk.PresentModeKHR
 ChooseSwapExtent :: proc(using ctx: ^VulkanContext) -> vk.Extent2D
 {
     // Provide for case 0xFFFFFFFF:
-    if (swapChain.support.capabilities.currentExtent.width != max(u32))
+    if (swapchain.support.capabilities.currentExtent.width != max(u32))
     {
-        return swapChain.support.capabilities.currentExtent
+        return swapchain.support.capabilities.currentExtent
     } else {
         width, height := glfw.GetFramebufferSize(window)
 
         extent := vk.Extent2D{u32(width), u32(height)}
 
-        extent.width = clamp(extent.width, swapChain.support.capabilities.minImageExtent.width, swapChain.support.capabilities.maxImageExtent.width)
-        extent.height = clamp(extent.height, swapChain.support.capabilities.minImageExtent.height, swapChain.support.capabilities.maxImageExtent.height)
+        extent.width = clamp(extent.width, swapchain.support.capabilities.minImageExtent.width, swapchain.support.capabilities.maxImageExtent.width)
+        extent.height = clamp(extent.height, swapchain.support.capabilities.minImageExtent.height, swapchain.support.capabilities.maxImageExtent.height)
         
         return extent
     }
