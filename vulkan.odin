@@ -1091,10 +1091,11 @@ RecreateSwapchain :: proc(using ctx: ^VulkanContext)
 
     CreateSwapchain(ctx)
 
-    if (swapchain.format != oldSwapchain.format) {
-        vk.DestroyRenderPass(device, pipeline.renderPass, nil)
-        CreateRenderPass(ctx)
-    }
+    // Include if using oldSwapchain!
+    // if (swapchain.format != oldSwapchain.format) {
+    //     vk.DestroyRenderPass(device, pipeline.renderPass, nil)
+    //     CreateRenderPass(ctx)
+    // }
 
     CreateImageViews(ctx)
     CreateFramebuffers(ctx)
