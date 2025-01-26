@@ -15,14 +15,14 @@ import vk "vendor:vulkan"
 
 WIDTH :: 1920
 HEIGHT :: 1080
-TITLE :: "Tonkatsu Triangle Triads"
+TITLE :: "Comfytree"
 DETAILED_INFO :: false  // Currently used only for Vulkan (OpenGL not implemented)
 
 InitBackend :: proc(using ctx: ^VulkanContext, api: API, vertices: []Vertex, indices: []u16) 
 {
     if api == .OpenGL {
         LogError("OPENGL NOT IMPLEMENTED!")
-        return
+        os.exit(1)
     }
 
     if api == .Vulkan {
@@ -45,7 +45,7 @@ CleanupBackend :: proc(using ctx: ^VulkanContext, api: API)
 
 main :: proc()
 {
-    fmt.println("\x1b[92mTonkatsu Triangle Triads\x1b[0m\n")
+    fmt.println("\x1b[92mComfytree\x1b[0m\n")
     // Vulkan
     api: API = .Vulkan
     using ctx : VulkanContext
