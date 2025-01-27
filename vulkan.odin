@@ -4,7 +4,6 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:mem"
-import "core:time"
 import m "core:math"
 import glm "core:math/linalg/glsl"
 import "vendor:glfw"
@@ -76,7 +75,6 @@ VulkanContext :: struct {
     vertexBuffer:           Buffer,
     indexBuffer:            Buffer,
     uniformBuffers:         []Buffer,
-    // uniformBuffersMapped:   []rawptr,
 
     imageAvailable:         [MAX_FRAMES_IN_FLIGHT]vk.Semaphore,
     renderFinished:         [MAX_FRAMES_IN_FLIGHT]vk.Semaphore,
@@ -734,7 +732,6 @@ CreateUniformBuffers :: proc(using ctx: ^VulkanContext)
         CreateBuffer(ctx, size_of(UniformBufferObject), buf.length, {.UNIFORM_BUFFER}, {.HOST_VISIBLE, .HOST_COHERENT}, &buf)
 
         data: rawptr
-        // vk.MapMemory(device, buf.memory, 0, buf.size, {}, &uniformBuffersMapped[i])
         vk.MapMemory(device, buf.memory, 0, buf.size, {}, &data)
         mem.copy(data, &buf.buffer, size_of(UniformBufferObject))
         vk.UnmapMemory(device, buf.memory)
