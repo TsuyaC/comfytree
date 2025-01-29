@@ -819,6 +819,17 @@ CreateShaderModule :: proc(using ctx: ^VulkanContext, code: []u8) -> vk.ShaderMo
     return shader
 }
 
+ReloadShaderModules :: proc(using ctx: ^VulkanContext)
+{
+    //TODO: Query for potential shader file changes + maybe create pipeline update in background and then swap out?
+    LogInfo("Reloading Shaders...")
+    vk.DeviceWaitIdle(device)
+    vk.DestroyPipeline(device, pipeline.handle, nil)
+    CreateGraphicsPipeline(ctx, "vert", "frag")
+    vk.FreeCommandBuffers(device, commandPool, len(commandBuffers), raw_data(commandBuffers[:]))
+    CreateCommandBuffers(ctx)
+}
+
 
 // ██████  ██    ██ ███████ ███████ ███████ ██████  
 // ██   ██ ██    ██ ██      ██      ██      ██   ██ 

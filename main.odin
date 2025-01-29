@@ -72,6 +72,9 @@ main :: proc()
     for !glfw.WindowShouldClose(window)
     {
         glfw.PollEvents()
+        if glfw.PRESS == glfw.GetKey(window, glfw.KEY_F5) {
+            ReloadShaderModules(&ctx)
+        }
         DrawFrame(&ctx, vertices[:], indices[:])
     }
 
