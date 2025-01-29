@@ -760,7 +760,15 @@ CompileShader :: proc(name: string, kind: shaderc.shaderKind) -> []u8
     srcPath := fmt.tprintf("./shaders/shader.%s", name)
     cmpPath := fmt.tprintf("./shaders/%s.spv", name)
 
-    if os.exists(cmpPath) {
+    srcLast, srcErr := os.last_write_time_by_name(srcPath)
+    cmpLast, cmpErr := os.last_write_time_by_name(cmpPath)
+
+    if srcErr != os.ERROR_NONE {
+        LogError(fmt.tprintf("Failed to open shader %q\n", srcPath))
+        return nil
+    }
+
+    if srcLast < cmpLast {
         LogInfo(fmt.tprintf("Loading %s from %s ...", name, cmpPath))
         code, _ := os.read_entire_file(cmpPath)
         return code
@@ -779,7 +787,6 @@ CompileShader :: proc(name: string, kind: shaderc.shaderKind) -> []u8
     code, _ := os.read_entire_file(srcPath)
     cPath := strings.clone_to_cstring(srcPath, context.temp_allocator)
     LogInfo(fmt.tprintf("Compiling %s from %s ...", name, srcPath))
-    startTime := glfw.GetTime()
     res := shaderc.compile_into_spv(comp, cstring(raw_data(code)), len(code), kind, cPath, cstring("main"), options)
     defer shaderc.result_release(res)
 
@@ -788,8 +795,8 @@ CompileShader :: proc(name: string, kind: shaderc.shaderKind) -> []u8
         fmt.printf("%s: Error: %s\n", name, shaderc.result_get_error_message(res))
         return nil
     }
-    endTime := glfw.GetTime()
-    LogInfo(fmt.tprintf("DONE! in %f seconds", f32(endTime - startTime)))
+    
+    LogInfo("DONE!")
 
     length := shaderc.result_get_length(res)
     out := make([]u8, length)
