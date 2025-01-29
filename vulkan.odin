@@ -206,7 +206,7 @@ InitVulkan :: proc(using ctx: ^VulkanContext, vertices: []Vertex, indices: []u16
     CreateSwapchain(ctx)
     CreateImageViews(ctx)
     CreateDescriptorSetLayout(ctx)
-    CreateGraphicsPipeline(ctx, "vert.spv", "frag.spv")
+    CreateGraphicsPipeline(ctx, "vert", "frag")
     CreateCommandPool(ctx)
     CreateDepthResources(ctx)
     CreateFramebuffers(ctx)
@@ -531,10 +531,8 @@ HasStencilComponent :: proc(format: vk.Format) -> bool
 
 CreateGraphicsPipeline :: proc(using ctx: ^VulkanContext, vsName: string, fsName: string)
 {
-    // vsCode := CompileShader(vsName, .VertexShader)
-    // fsCode := CompileShader(fsName, .FragmentShader)
-    vsCode,_ := os.read_entire_file(fmt.tprintf("./shaders/%s", vsName))
-    fsCode,_ := os.read_entire_file(fmt.tprintf("./shaders/%s", fsName))
+    vsCode := CompileShader(vsName, .VertexShader)
+    fsCode := CompileShader(fsName, .FragmentShader)
 
     defer
     {
@@ -759,16 +757,11 @@ CreateRenderPass :: proc(using ctx: ^VulkanContext)
 
 CompileShader :: proc(name: string, kind: shaderc.shaderKind) -> []u8
 {
-    srcPath := fmt.tprintf("./shaders/%s", name)
-    cmpPath := fmt.tprintf("./shaders/compiled/%s.spv", name)
-    srcTime, srcErr := os.last_write_time_by_name(srcPath)
-    if srcErr != os.ERROR_NONE{
-        LogError(fmt.tprintf("Failed to open shader %q\n", srcPath))
-        return nil
-    }
+    srcPath := fmt.tprintf("./shaders/shader.%s", name)
+    cmpPath := fmt.tprintf("./shaders/%s.spv", name)
 
-    cmpTime, cmpErr := os.last_write_time_by_name(cmpPath)
-    if cmpErr != os.ERROR_NONE && cmpTime >= srcTime{
+    if os.exists(cmpPath) {
+        LogInfo(fmt.tprintf("Loading %s from %s ...", name, cmpPath))
         code, _ := os.read_entire_file(cmpPath)
         return code
     }
@@ -785,6 +778,8 @@ CompileShader :: proc(name: string, kind: shaderc.shaderKind) -> []u8
 
     code, _ := os.read_entire_file(srcPath)
     cPath := strings.clone_to_cstring(srcPath, context.temp_allocator)
+    LogInfo(fmt.tprintf("Compiling %s from %s ...", name, srcPath))
+    startTime := glfw.GetTime()
     res := shaderc.compile_into_spv(comp, cstring(raw_data(code)), len(code), kind, cPath, cstring("main"), options)
     defer shaderc.result_release(res)
 
@@ -793,6 +788,8 @@ CompileShader :: proc(name: string, kind: shaderc.shaderKind) -> []u8
         fmt.printf("%s: Error: %s\n", name, shaderc.result_get_error_message(res))
         return nil
     }
+    endTime := glfw.GetTime()
+    LogInfo(fmt.tprintf("DONE! in %f seconds", f32(endTime - startTime)))
 
     length := shaderc.result_get_length(res)
     out := make([]u8, length)
