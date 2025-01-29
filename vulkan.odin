@@ -192,10 +192,6 @@ InitVulkan :: proc(using ctx: ^VulkanContext, vertices: []Vertex, indices: []u16
     CreateSurface(ctx)
     PickDevice(ctx)
     FindQueueFamilies(ctx)
-
-    // LogInfo("Queue Indices:")
-    for q, f in queueIndices do fmt.printf(" %v: %d\n", f, q)
-
     CreateLogicalDevice(ctx)
 
     for &q, f in &queues
