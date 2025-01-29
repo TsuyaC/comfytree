@@ -32,16 +32,15 @@ Log :: proc(type: LogType, msg: string, location: runtime.Source_Code_Location, 
     switch type {
         case .Normal:
             prefix = "[LOG]"
-            coloredPrefix = fmt.tprint("\x1b[92m", prefix)
+            coloredPrefix = fmt.tprintf("\x1b[92m%s", prefix)
         case .Warning:
             prefix = "[WARNING]"
-            coloredPrefix = fmt.tprint("\x1b[33m", prefix)
+            coloredPrefix = fmt.tprintf("\x1b[33m%s", prefix)
         case .Error:
             prefix = "[ERROR]"
-            coloredPrefix = fmt.tprint("\x1b[31m", prefix)
+            coloredPrefix = fmt.tprintf("\x1b[31m%s", prefix)
     }
 
-    coloredPrefix, _ = strings.replace(coloredPrefix, " ", "", 1) // Removes weird space infront of prefix, no clue why this happens yet
     fmt.print(coloredPrefix)
     if isDetailed {
         fmt.printf(" %s\nat: %s:%d: %s%s\n", msg, location.file_path, location.line, location.procedure, coloredSuffix)
