@@ -42,7 +42,7 @@ VERTEX_ATTRIBUTES := [?]vk.VertexInputAttributeDescription {
     {
         binding = 0,
         location = 0,
-        format = .R32G32_SFLOAT,
+        format = .R32G32B32_SFLOAT,
         offset = cast(u32)offset_of(Vertex, pos),
     },
     {
@@ -97,11 +97,14 @@ VulkanContext :: struct {
     textureImage:           TexImage,
     textureImageView:       vk.ImageView,
     textureSampler:         vk.Sampler,
+
+    depthImage:             TexImage,
+    depthImageView:         vk.ImageView
 }
 
 
 Vertex :: struct {
-    pos:        glm.vec2,
+    pos:        glm.vec3,
     color:      glm.vec3,
     texCoord:   glm.vec2,
 }
@@ -204,8 +207,9 @@ InitVulkan :: proc(using ctx: ^VulkanContext, vertices: []Vertex, indices: []u16
     CreateImageViews(ctx)
     CreateDescriptorSetLayout(ctx)
     CreateGraphicsPipeline(ctx, "vert.spv", "frag.spv")
-    CreateFramebuffers(ctx)
     CreateCommandPool(ctx)
+    CreateDepthResources(ctx)
+    CreateFramebuffers(ctx)
     CreateTextureImage(ctx)
     CreateTextureImageView(ctx)
     CreateTextureSampler(ctx)
@@ -400,14 +404,14 @@ CopyBufferToImage :: proc(using ctx: ^VulkanContext, buffer: vk.Buffer, image: v
     EndSingleTimeCommands(ctx, &cmdBuffer)
 }
 
-CreateImageView :: proc(using ctx: ^VulkanContext, image: vk.Image, format: vk.Format) -> vk.ImageView
+CreateImageView :: proc(using ctx: ^VulkanContext, image: vk.Image, format: vk.Format, aspectFlags: vk.ImageAspectFlags) -> vk.ImageView
 {
     viewInfo: vk.ImageViewCreateInfo
     viewInfo.sType = .IMAGE_VIEW_CREATE_INFO
     viewInfo.image = image
     viewInfo.viewType = .D2
     viewInfo.format = format
-    viewInfo.subresourceRange.aspectMask = {.COLOR}
+    viewInfo.subresourceRange.aspectMask = aspectFlags
     viewInfo.subresourceRange.baseMipLevel = 0
     viewInfo.subresourceRange.levelCount = 1
     viewInfo.subresourceRange.baseArrayLayer = 0
@@ -424,7 +428,7 @@ CreateImageView :: proc(using ctx: ^VulkanContext, image: vk.Image, format: vk.F
 
 CreateTextureImageView :: proc(using ctx: ^VulkanContext)
 {
-    textureImageView = CreateImageView(ctx, textureImage.image, .R8G8B8A8_SRGB)
+    textureImageView = CreateImageView(ctx, textureImage.image, .R8G8B8A8_SRGB, {.COLOR})
 }
 
 CreateImageViews :: proc(using ctx: ^VulkanContext)
@@ -435,7 +439,7 @@ CreateImageViews :: proc(using ctx: ^VulkanContext)
 
     for _, i in images
     {
-        imageViews[i] = CreateImageView(ctx, images[i], format.format)
+        imageViews[i] = CreateImageView(ctx, images[i], format.format, {.COLOR})
     }
 }
 
@@ -463,6 +467,58 @@ CreateTextureSampler :: proc(using ctx: ^VulkanContext)
         LogError("Failed to create Texture Sampler!")
         os.exit(1)
     }
+}
+
+
+// ██████  ███████ ██████  ████████ ██   ██ 
+// ██   ██ ██      ██   ██    ██    ██   ██ 
+// ██   ██ █████   ██████     ██    ███████ 
+// ██   ██ ██      ██         ██    ██   ██ 
+// ██████  ███████ ██         ██    ██   ██ 
+
+
+CreateDepthResources :: proc(using ctx: ^VulkanContext)
+{
+    depthFormat := FindDepthFormat(ctx)
+
+    CreateImage(ctx, swapchain.extent.width, swapchain.extent.height, depthFormat, .OPTIMAL, {.DEPTH_STENCIL_ATTACHMENT}, {.DEVICE_LOCAL}, &depthImage)
+    depthImageView = CreateImageView(ctx, depthImage.image, depthFormat, {.DEPTH})
+}
+
+FindDepthFormat :: proc(using ctx: ^VulkanContext) -> vk.Format
+{
+    return FindSupportedFormat(ctx, &[]vk.Format{.D32_SFLOAT, .D32_SFLOAT_S8_UINT, .D24_UNORM_S8_UINT}, .OPTIMAL, {.DEPTH_STENCIL_ATTACHMENT})
+}
+
+FindSupportedFormat :: proc(using ctx: ^VulkanContext, candidates: ^[]vk.Format, tiling: vk.ImageTiling, features: vk.FormatFeatureFlags) -> vk.Format
+{
+    res: vk.Format
+
+    for format in candidates
+    {
+        props: vk.FormatProperties
+        vk.GetPhysicalDeviceFormatProperties(physicalDevice, format, &props)
+
+        if tiling == .LINEAR && (props.linearTilingFeatures & features) == features {
+            res = format
+            return res
+        } else if tiling == .OPTIMAL && (props.linearTilingFeatures & features) == features {
+            res = format
+            return res
+        }
+    }
+
+    if res == nil {
+        LogWarning("Failed to find a supported Format. Defaulting to D32_SFLOAT")
+        return .D32_SFLOAT
+    }
+
+    return res
+}
+
+HasStencilComponent :: proc(format: vk.Format) -> bool 
+{
+    return format == .D32_SFLOAT_S8_UINT || format == .D24_UNORM_S8_UINT
 }
 
 
@@ -549,8 +605,8 @@ CreateGraphicsPipeline :: proc(using ctx: ^VulkanContext, vsName: string, fsName
     rasterizer.rasterizerDiscardEnable = false
     rasterizer.polygonMode = .FILL
     rasterizer.lineWidth = 1.0
-    rasterizer.cullMode = {}
-    rasterizer.frontFace = .CLOCKWISE
+    rasterizer.cullMode = {.BACK}
+    rasterizer.frontFace = .COUNTER_CLOCKWISE
     rasterizer.depthBiasEnable = false
     rasterizer.depthBiasConstantFactor = 0.0
     rasterizer.depthBiasClamp = 0.0
@@ -564,6 +620,14 @@ CreateGraphicsPipeline :: proc(using ctx: ^VulkanContext, vsName: string, fsName
     multisampling.pSampleMask = nil
     multisampling.alphaToCoverageEnable = false
     multisampling.alphaToOneEnable = false
+
+    depthStencil: vk.PipelineDepthStencilStateCreateInfo
+    depthStencil.sType = .PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO
+    depthStencil.depthTestEnable = true
+    depthStencil.depthWriteEnable = true
+    depthStencil.depthCompareOp = .LESS
+    depthStencil.depthBoundsTestEnable = false
+    depthStencil.stencilTestEnable = false
 
     colorBlendAttachment: vk.PipelineColorBlendAttachmentState
     colorBlendAttachment.colorWriteMask = {.R, .G, .B, .A}
@@ -609,7 +673,7 @@ CreateGraphicsPipeline :: proc(using ctx: ^VulkanContext, vsName: string, fsName
     pipelineInfo.pViewportState = &viewportState
     pipelineInfo.pRasterizationState = &rasterizer
     pipelineInfo.pMultisampleState = &multisampling
-    pipelineInfo.pDepthStencilState = nil
+    pipelineInfo.pDepthStencilState = &depthStencil
     pipelineInfo.pColorBlendState = &colorBlending
     pipelineInfo.pDynamicState = &dynamicState
     pipelineInfo.layout = pipeline.layout
@@ -644,27 +708,44 @@ CreateRenderPass :: proc(using ctx: ^VulkanContext)
     colorAttachment.initialLayout = .UNDEFINED
     colorAttachment.finalLayout = .PRESENT_SRC_KHR
 
+    depthAttachment: vk.AttachmentDescription
+    depthAttachment.format = FindDepthFormat(ctx)
+    depthAttachment.samples = {._1}
+    depthAttachment.loadOp = .CLEAR
+    depthAttachment.storeOp = .DONT_CARE
+    depthAttachment.stencilLoadOp = .DONT_CARE
+    depthAttachment.stencilStoreOp = .DONT_CARE
+    depthAttachment.initialLayout = .UNDEFINED
+    depthAttachment.finalLayout = .DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+
     colorAttachmentRef: vk.AttachmentReference
     colorAttachmentRef.attachment = 0
     colorAttachmentRef.layout = .COLOR_ATTACHMENT_OPTIMAL
+
+    depthAttachmentRef: vk.AttachmentReference
+    depthAttachmentRef.attachment = 1
+    depthAttachmentRef.layout = .DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+
+    attachments := []vk.AttachmentDescription{colorAttachment, depthAttachment}
 
     subpass: vk.SubpassDescription
     subpass.pipelineBindPoint = .GRAPHICS
     subpass.colorAttachmentCount = 1
     subpass.pColorAttachments = &colorAttachmentRef
+    subpass.pDepthStencilAttachment = &depthAttachmentRef
 
     dependency: vk.SubpassDependency
     dependency.srcSubpass = vk.SUBPASS_EXTERNAL
     dependency.dstSubpass = 0
-    dependency.srcStageMask = {.COLOR_ATTACHMENT_OUTPUT}
+    dependency.srcStageMask = {.COLOR_ATTACHMENT_OUTPUT, .EARLY_FRAGMENT_TESTS}
     dependency.srcAccessMask = {}
-    dependency.dstStageMask = {.COLOR_ATTACHMENT_OUTPUT}
-    dependency.dstAccessMask = {.COLOR_ATTACHMENT_WRITE}
+    dependency.dstStageMask = {.COLOR_ATTACHMENT_OUTPUT, .EARLY_FRAGMENT_TESTS}
+    dependency.dstAccessMask = {.COLOR_ATTACHMENT_WRITE, .DEPTH_STENCIL_ATTACHMENT_WRITE}
 
     renderPassInfo: vk.RenderPassCreateInfo
     renderPassInfo.sType = .RENDER_PASS_CREATE_INFO
-    renderPassInfo.attachmentCount = 1
-    renderPassInfo.pAttachments = &colorAttachment
+    renderPassInfo.attachmentCount = u32(len(attachments))
+    renderPassInfo.pAttachments = raw_data(attachments[:])
     renderPassInfo.subpassCount = 1
     renderPassInfo.pSubpasses = &subpass
     renderPassInfo.dependencyCount = 1
@@ -792,10 +873,11 @@ RecordCommandBuffer :: proc(using ctx: ^VulkanContext, buffer: vk.CommandBuffer,
     renderPassInfo.renderArea.offset = {0, 0}
     renderPassInfo.renderArea.extent = swapchain.extent
 
-    clearColor: vk.ClearValue
-    clearColor.color.float32 = [4]f32{0.0, 0.0, 0.0, 1.0}
-    renderPassInfo.clearValueCount = 1
-    renderPassInfo.pClearValues = &clearColor
+    clearColors: [2]vk.ClearValue
+    clearColors[0].color.float32 = [4]f32{0.0, 0.0, 0.0, 1.0}
+    clearColors[1].depthStencil = {1.0, 0.0}
+    renderPassInfo.clearValueCount = u32(len(clearColors))
+    renderPassInfo.pClearValues = raw_data(clearColors[:])
 
     vk.CmdBeginRenderPass(buffer, &renderPassInfo, .INLINE)
 
@@ -1495,11 +1577,16 @@ RecreateSwapchain :: proc(using ctx: ^VulkanContext)
     // }
 
     CreateImageViews(ctx)
+    CreateDepthResources(ctx)
     CreateFramebuffers(ctx)
 }
 
 CleanupSwapchain :: proc(using ctx: ^VulkanContext)
 {
+    vk.DestroyImageView(device, depthImageView, nil)
+    vk.DestroyImage(device, depthImage.image, nil)
+    vk.FreeMemory(device, depthImage.memory, nil)
+
     for f in swapchain.framebuffers
     {
         vk.DestroyFramebuffer(device, f, nil)
@@ -1516,13 +1603,13 @@ CreateFramebuffers :: proc(using ctx: ^VulkanContext)
     swapchain.framebuffers = make([]vk.Framebuffer, len(swapchain.imageViews))
     for v, i in swapchain.imageViews
     {
-        attachments := [?]vk.ImageView{v}
+        attachments := [?]vk.ImageView{v, depthImageView}
 
         framebufferInfo: vk.FramebufferCreateInfo
         framebufferInfo.sType = .FRAMEBUFFER_CREATE_INFO
         framebufferInfo.renderPass = pipeline.renderPass
-        framebufferInfo.attachmentCount = 1
-        framebufferInfo.pAttachments = &attachments[0]
+        framebufferInfo.attachmentCount = u32(len(attachments))
+        framebufferInfo.pAttachments = raw_data(attachments[:])
         framebufferInfo.width = swapchain.extent.width
         framebufferInfo.height = swapchain.extent.height
         framebufferInfo.layers = 1
