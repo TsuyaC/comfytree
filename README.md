@@ -1,2 +1,2 @@
 # comfytree
-Graphics application built with Odin
+Currently just following [vulkan tutorial](https://vulkan-tutorial.com) but with odin
