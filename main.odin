@@ -18,7 +18,10 @@ HEIGHT :: 1080
 TITLE :: "Comfytree"
 DETAILED_INFO :: false  // Currently used only for Vulkan (OpenGL not implemented)
 
-InitBackend :: proc(using ctx: ^VulkanContext, api: API, vertices: []Vertex, indices: []u16) 
+objName :: "./mesh/viking_room.obj"
+objTex  :: "./textures/viking_room.png"
+
+InitBackend :: proc(using ctx: ^VulkanContext, api: API, vertices: []Vertex, indices: []u32) 
 {
     if api == .OpenGL {
         LogError("OPENGL NOT IMPLEMENTED!")
@@ -50,24 +53,8 @@ main :: proc()
     api: API = .Vulkan
     using ctx : VulkanContext
 
-    vertices := [?]Vertex {
-		{{-0.5, -0.5,  0.0}, {1.0, 0.0, 0.0}, {0.0, 0.0}},
-		{{ 0.5, -0.5,  0.0}, {0.0, 1.0, 0.0}, {1.0, 0.0}},
-		{{ 0.5,  0.5,  0.0}, {0.0, 0.0, 1.0}, {1.0, 1.0}},
-        {{-0.5,  0.5,  0.0}, {1.0, 1.0, 1.0}, {0.0, 1.0}},
-
-		{{-0.5, -0.5, -0.5}, {1.0, 0.0, 0.0}, {0.0, 0.0}},
-		{{ 0.5, -0.5, -0.5}, {0.0, 1.0, 0.0}, {1.0, 0.0}},
-		{{ 0.5,  0.5, -0.5}, {0.0, 0.0, 1.0}, {1.0, 1.0}},
-        {{-0.5,  0.5, -0.5}, {1.0, 1.0, 1.0}, {0.0, 1.0}},
-    }
-
-    indices := [?]u16 {
-        0, 1, 2, 2, 3, 0,
-        4, 5, 6, 6, 7, 4,
-    }
-
-    InitBackend(&ctx, api, vertices[:], indices[:])
+    verticesObj, testNormals, indicesObj := LoadObj(objName)
+    InitBackend(&ctx, api, verticesObj[:], indicesObj[:])
 
     for !glfw.WindowShouldClose(window)
     {
@@ -75,7 +62,7 @@ main :: proc()
         if glfw.PRESS == glfw.GetKey(window, glfw.KEY_F5) {
             ReloadShaderModules(&ctx)
         }
-        DrawFrame(&ctx, vertices[:], indices[:])
+        DrawFrame(&ctx, verticesObj[:], indicesObj[:])
     }
 
     CleanupBackend(&ctx, api)

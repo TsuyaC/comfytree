@@ -57,6 +57,12 @@ VERTEX_ATTRIBUTES := [?]vk.VertexInputAttributeDescription {
         format = .R32G32_SFLOAT,
         offset = cast(u32)offset_of(Vertex, texCoord)
     },
+    {
+        binding = 0,
+        location = 3,
+        format = .R32G32B32_SFLOAT,
+        offset = cast(u32)offset_of(Vertex, normals)
+    }
 }
 
 UniformBufferObject :: struct {
@@ -107,6 +113,7 @@ Vertex :: struct {
     pos:        glm.vec3,
     color:      glm.vec3,
     texCoord:   glm.vec2,
+    normals:    glm.vec3
 }
 
 @(private="file")
@@ -170,7 +177,7 @@ Pipeline :: struct {
 // ███████ ███████    ██     ██████  ██      
                                           
 
-InitVulkan :: proc(using ctx: ^VulkanContext, vertices: []Vertex, indices: []u16)
+InitVulkan :: proc(using ctx: ^VulkanContext, vertices: []Vertex, indices: []u32)
 {
     context.user_ptr = &instance
     get_proc_address :: proc(p:  rawptr, name: cstring)
@@ -271,7 +278,7 @@ CleanupVulkan :: proc(using ctx: ^VulkanContext)
 CreateTextureImage :: proc(using ctx: ^VulkanContext)
 {
     texWidth, texHeight, texChannels: i32
-    pixels := stbi.load("./textures/texture.jpg", &texWidth, &texHeight, &texChannels, 4)
+    pixels := stbi.load(objTex, &texWidth, &texHeight, &texChannels, 4)
     imageSize := vk.DeviceSize(texWidth * texHeight * 4)
 
     if pixels == nil {
@@ -897,7 +904,7 @@ RecordCommandBuffer :: proc(using ctx: ^VulkanContext, buffer: vk.CommandBuffer,
     vertexBuffers := [?]vk.Buffer{vertexBuffer.buffer}
     offsets := [?]vk.DeviceSize{0}
     vk.CmdBindVertexBuffers(buffer, 0, 1, &vertexBuffers[0], &offsets[0])
-    vk.CmdBindIndexBuffer(buffer, indexBuffer.buffer, 0, .UINT16)
+    vk.CmdBindIndexBuffer(buffer, indexBuffer.buffer, 0, .UINT32)
 
     viewport: vk.Viewport
     viewport.x = 0.0
@@ -1040,7 +1047,7 @@ CreateVertexBuffer :: proc(using ctx: ^VulkanContext, vertices: []Vertex)
     vk.DestroyBuffer(device, staging.buffer, nil)
 }
 
-CreateIndexBuffer :: proc(using ctx: ^VulkanContext, indices: []u16)
+CreateIndexBuffer :: proc(using ctx: ^VulkanContext, indices: []u32)
 {
     indexBuffer.length = len(indices)
     indexBuffer.size = cast(vk.DeviceSize)(len(indices) * size_of(indices[0]))
@@ -1217,7 +1224,7 @@ CreateSyncObjects :: proc(using ctx: ^VulkanContext)
 // ██████  ██   ██ ██   ██  ███ ███  
 
 
-DrawFrame :: proc(using ctx: ^VulkanContext, vertices: []Vertex, indices: []u16)
+DrawFrame :: proc(using ctx: ^VulkanContext, vertices: []Vertex, indices: []u32)
 {
     vk.WaitForFences(device, 1, &inFlight[curFrame], true, max(u64))
     
