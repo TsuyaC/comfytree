@@ -100,12 +100,14 @@ VulkanContext :: struct {
     descriptorPool:         vk.DescriptorPool,
     descriptorSets:         []vk.DescriptorSet,
 
+    mipLevels:              u32,
     textureImage:           TexImage,
     textureImageView:       vk.ImageView,
     textureSampler:         vk.Sampler,
 
     depthImage:             TexImage,
     depthImageView:         vk.ImageView
+
 }
 
 
@@ -188,6 +190,8 @@ InitVulkan :: proc(using ctx: ^VulkanContext, vertices: []Vertex, indices: []u32
     vk.load_proc_addresses(get_proc_address)
     CreateInstance(ctx)
     vk.load_proc_addresses(get_proc_address)
+
+    mipLevels = 1
 
     extensions := GetExtensions()
     when DETAILED_INFO {
@@ -280,6 +284,7 @@ CreateTextureImage :: proc(using ctx: ^VulkanContext)
     texWidth, texHeight, texChannels: i32
     pixels := stbi.load(objTex, &texWidth, &texHeight, &texChannels, 4)
     imageSize := vk.DeviceSize(texWidth * texHeight * 4)
+    mipLevels = cast(u32)m.floor(m.log2(cast(f32)m.max(texWidth, texHeight))) + 1
 
     if pixels == nil {
         LogError("Failed to load Texture Image!")
@@ -295,17 +300,18 @@ CreateTextureImage :: proc(using ctx: ^VulkanContext)
 
     stbi.image_free(pixels)
 
-    CreateImage(ctx, u32(texWidth), u32(texHeight), vk.Format.R8G8B8A8_SRGB, vk.ImageTiling.OPTIMAL, {vk.ImageUsageFlag.TRANSFER_DST, vk.ImageUsageFlag.SAMPLED}, {vk.MemoryPropertyFlag.DEVICE_LOCAL}, &textureImage)
+    CreateImage(ctx, u32(texWidth), u32(texHeight), mipLevels, vk.Format.R8G8B8A8_SRGB, vk.ImageTiling.OPTIMAL, {vk.ImageUsageFlag.TRANSFER_SRC, vk.ImageUsageFlag.TRANSFER_DST, vk.ImageUsageFlag.SAMPLED}, {vk.MemoryPropertyFlag.DEVICE_LOCAL}, &textureImage)
 
-    TransitionImageLayout(ctx, textureImage.image, .R8G8B8A8_SRGB, .UNDEFINED, .TRANSFER_DST_OPTIMAL)
+    TransitionImageLayout(ctx, textureImage.image, .R8G8B8A8_SRGB, .UNDEFINED, .TRANSFER_DST_OPTIMAL, mipLevels)
     CopyBufferToImage(ctx, stagingBuffer.buffer, textureImage.image, u32(texWidth), u32(texHeight))
-    TransitionImageLayout(ctx, textureImage.image, .R8G8B8A8_SRGB, .TRANSFER_DST_OPTIMAL, vk.ImageLayout.SHADER_READ_ONLY_OPTIMAL)
 
     vk.DestroyBuffer(device, stagingBuffer.buffer, nil)
     vk.FreeMemory(device, stagingBuffer.memory, nil)
+
+    GenerateMipmaps(ctx, textureImage.image, .R8G8B8_SRGB, texWidth, texHeight)
 }
 
-CreateImage :: proc(using ctx: ^VulkanContext, width, height: u32, format: vk.Format, tiling: vk.ImageTiling, usage: vk.ImageUsageFlags, properties: vk.MemoryPropertyFlags, image: ^TexImage)
+CreateImage :: proc(using ctx: ^VulkanContext, width, height, mips: u32, format: vk.Format, tiling: vk.ImageTiling, usage: vk.ImageUsageFlags, properties: vk.MemoryPropertyFlags, image: ^TexImage)
 {
     imageInfo: vk.ImageCreateInfo
     imageInfo.sType = .IMAGE_CREATE_INFO
@@ -313,7 +319,7 @@ CreateImage :: proc(using ctx: ^VulkanContext, width, height: u32, format: vk.Fo
     imageInfo.extent.width = width
     imageInfo.extent.height = height
     imageInfo.extent.depth = 1
-    imageInfo.mipLevels = 1
+    imageInfo.mipLevels = mips
     imageInfo.arrayLayers = 1
     imageInfo.format = format
     imageInfo.tiling = tiling
@@ -343,7 +349,7 @@ CreateImage :: proc(using ctx: ^VulkanContext, width, height: u32, format: vk.Fo
     vk.BindImageMemory(device, image.image, image.memory, 0)
 }
 
-TransitionImageLayout :: proc(using ctx: ^VulkanContext, image: vk.Image, format: vk.Format, oldLayout, newLayout: vk.ImageLayout)
+TransitionImageLayout :: proc(using ctx: ^VulkanContext, image: vk.Image, format: vk.Format, oldLayout, newLayout: vk.ImageLayout, mips: u32)
 {
     cmdBuffer := BeginSingleTimeCommands(ctx)
 
@@ -356,7 +362,7 @@ TransitionImageLayout :: proc(using ctx: ^VulkanContext, image: vk.Image, format
     barrier.image = image
     barrier.subresourceRange.aspectMask = {.COLOR}
     barrier.subresourceRange.baseMipLevel = 0
-    barrier.subresourceRange.levelCount = 1
+    barrier.subresourceRange.levelCount = mips
     barrier.subresourceRange.baseArrayLayer = 0
     barrier.subresourceRange.layerCount = 1
 
@@ -407,7 +413,7 @@ CopyBufferToImage :: proc(using ctx: ^VulkanContext, buffer: vk.Buffer, image: v
     EndSingleTimeCommands(ctx, &cmdBuffer)
 }
 
-CreateImageView :: proc(using ctx: ^VulkanContext, image: vk.Image, format: vk.Format, aspectFlags: vk.ImageAspectFlags) -> vk.ImageView
+CreateImageView :: proc(using ctx: ^VulkanContext, image: vk.Image, format: vk.Format, aspectFlags: vk.ImageAspectFlags, mips: u32) -> vk.ImageView
 {
     viewInfo: vk.ImageViewCreateInfo
     viewInfo.sType = .IMAGE_VIEW_CREATE_INFO
@@ -416,7 +422,7 @@ CreateImageView :: proc(using ctx: ^VulkanContext, image: vk.Image, format: vk.F
     viewInfo.format = format
     viewInfo.subresourceRange.aspectMask = aspectFlags
     viewInfo.subresourceRange.baseMipLevel = 0
-    viewInfo.subresourceRange.levelCount = 1
+    viewInfo.subresourceRange.levelCount = mips
     viewInfo.subresourceRange.baseArrayLayer = 0
     viewInfo.subresourceRange.layerCount = 1
 
@@ -431,7 +437,7 @@ CreateImageView :: proc(using ctx: ^VulkanContext, image: vk.Image, format: vk.F
 
 CreateTextureImageView :: proc(using ctx: ^VulkanContext)
 {
-    textureImageView = CreateImageView(ctx, textureImage.image, .R8G8B8A8_SRGB, {.COLOR})
+    textureImageView = CreateImageView(ctx, textureImage.image, .R8G8B8A8_SRGB, {.COLOR}, mipLevels)
 }
 
 CreateImageViews :: proc(using ctx: ^VulkanContext)
@@ -442,7 +448,7 @@ CreateImageViews :: proc(using ctx: ^VulkanContext)
 
     for _, i in images
     {
-        imageViews[i] = CreateImageView(ctx, images[i], format.format, {.COLOR})
+        imageViews[i] = CreateImageView(ctx, images[i], format.format, {.COLOR}, mipLevels)
     }
 }
 
@@ -463,13 +469,92 @@ CreateTextureSampler :: proc(using ctx: ^VulkanContext)
     samplerInfo.compareOp = .ALWAYS
     samplerInfo.mipmapMode = .LINEAR
     samplerInfo.mipLodBias = 0.0
-    samplerInfo.minLod = 0.0
-    samplerInfo.maxLod = 0.0
+    samplerInfo.minLod = f32(mipLevels / 2)
+    samplerInfo.maxLod = f32(mipLevels)
 
     if res := vk.CreateSampler(device, &samplerInfo, nil, &textureSampler); res != .SUCCESS {
         LogError("Failed to create Texture Sampler!")
         os.exit(1)
     }
+}
+
+GenerateMipmaps :: proc(using ctx: ^VulkanContext, image: vk.Image, format: vk.Format, texWidth, texHeight: i32)
+{
+    cmdBuffer := BeginSingleTimeCommands(ctx)
+
+    formatProperties: vk.FormatProperties
+    vk.GetPhysicalDeviceFormatProperties(physicalDevice, format, &formatProperties)
+
+    if vk.FormatFeatureFlag.SAMPLED_IMAGE_FILTER_LINEAR in formatProperties.optimalTilingFeatures == false {
+        LogWarning("Texture image format does not support Linear Blitting!")
+        // os.exit(1)
+    }
+    // check for other supported formats maybe
+    // pregen mipmaps and load from file as option
+
+    barrier: vk.ImageMemoryBarrier
+    barrier.sType = .IMAGE_MEMORY_BARRIER
+    barrier.image = image
+    barrier.srcQueueFamilyIndex = vk.QUEUE_FAMILY_IGNORED
+    barrier.dstQueueFamilyIndex = vk.QUEUE_FAMILY_IGNORED
+    barrier.subresourceRange.aspectMask = {.COLOR}
+    barrier.subresourceRange.baseArrayLayer = 0
+    barrier.subresourceRange.layerCount = 1
+    barrier.subresourceRange.levelCount = 1
+
+    mipWidth := i32(texWidth)
+    mipHeight := i32(texHeight)
+
+    for i: u32 = 1; i < mipLevels; i += 1
+    {
+        barrier.subresourceRange.baseMipLevel = i - 1
+        barrier.oldLayout = .TRANSFER_DST_OPTIMAL
+        barrier.newLayout = .TRANSFER_SRC_OPTIMAL
+        barrier.srcAccessMask = {.TRANSFER_WRITE}
+        barrier.dstAccessMask = {.TRANSFER_READ}
+
+        vk.CmdPipelineBarrier(cmdBuffer, {.TRANSFER}, {.TRANSFER}, {}, 0, nil, 0, nil, 1, &barrier)
+
+        blit: vk.ImageBlit
+        blit.srcOffsets[0] = {0, 0, 0}
+        blit.srcOffsets[1] = {mipWidth, mipHeight, 1}
+        blit.srcSubresource.aspectMask = {.COLOR}
+        blit.srcSubresource.mipLevel = i - 1
+        blit.srcSubresource.baseArrayLayer = 0
+        blit.srcSubresource.layerCount = 1
+        blit.dstOffsets[0] = {0, 0, 0}
+        blit.dstOffsets[1] = {mipWidth > 1 ? mipWidth / 2 : 1, mipHeight > 1 ? mipHeight / 2 : 1, 1}
+        blit.dstSubresource.aspectMask = {.COLOR}
+        blit.dstSubresource.mipLevel = i
+        blit.dstSubresource.baseArrayLayer = 0
+        blit.dstSubresource.layerCount = 1
+
+        vk.CmdBlitImage(cmdBuffer, image, .TRANSFER_SRC_OPTIMAL, image, .TRANSFER_DST_OPTIMAL, 1, &blit, .LINEAR)
+
+        barrier.oldLayout = .TRANSFER_SRC_OPTIMAL
+        barrier.newLayout = .SHADER_READ_ONLY_OPTIMAL
+        barrier.srcAccessMask = {.TRANSFER_READ}
+        barrier.dstAccessMask = {.SHADER_READ}
+
+        vk.CmdPipelineBarrier(cmdBuffer, {.TRANSFER}, {.FRAGMENT_SHADER}, {}, 0, nil, 0, nil, 1, &barrier)
+
+        if (mipWidth > 1) {
+            mipWidth = mipWidth / 2
+        }
+        if (mipHeight > 1) {
+            mipHeight = mipHeight / 2
+        }
+    }
+
+    barrier.subresourceRange.baseMipLevel = mipLevels - 1
+    barrier.oldLayout = .TRANSFER_DST_OPTIMAL
+    barrier.newLayout = .SHADER_READ_ONLY_OPTIMAL
+    barrier.srcAccessMask = {.TRANSFER_WRITE}
+    barrier.dstAccessMask = {.SHADER_READ}
+
+    vk.CmdPipelineBarrier(cmdBuffer, {.TRANSFER}, {.FRAGMENT_SHADER}, {}, 0, nil, 0, nil, 1, &barrier)
+
+    EndSingleTimeCommands(ctx, &cmdBuffer)
 }
 
 
@@ -484,8 +569,8 @@ CreateDepthResources :: proc(using ctx: ^VulkanContext)
 {
     depthFormat := FindDepthFormat(ctx)
 
-    CreateImage(ctx, swapchain.extent.width, swapchain.extent.height, depthFormat, .OPTIMAL, {.DEPTH_STENCIL_ATTACHMENT}, {.DEVICE_LOCAL}, &depthImage)
-    depthImageView = CreateImageView(ctx, depthImage.image, depthFormat, {.DEPTH})
+    CreateImage(ctx, swapchain.extent.width, swapchain.extent.height, 1, depthFormat, .OPTIMAL, {.DEPTH_STENCIL_ATTACHMENT}, {.DEVICE_LOCAL}, &depthImage)
+    depthImageView = CreateImageView(ctx, depthImage.image, depthFormat, {.DEPTH}, 1)
 }
 
 FindDepthFormat :: proc(using ctx: ^VulkanContext) -> vk.Format
