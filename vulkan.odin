@@ -105,9 +105,13 @@ VulkanContext :: struct {
     textureImageView:       vk.ImageView,
     textureSampler:         vk.Sampler,
 
-    depthImage:             TexImage,
-    depthImageView:         vk.ImageView
+    msaaSamples:            vk.SampleCountFlag,
 
+    depthImage:             TexImage,
+    depthImageView:         vk.ImageView,
+    
+    colorImage:             TexImage,
+    colorImageView:         vk.ImageView,
 }
 
 
@@ -187,6 +191,8 @@ InitVulkan :: proc(using ctx: ^VulkanContext, vertices: []Vertex, indices: []u32
         (cast(^rawptr)p)^ = glfw.GetInstanceProcAddress((^vk.Instance)(context.user_ptr)^, name)
     }
 
+    msaaSamples = vk.SampleCountFlag._1
+
     vk.load_proc_addresses(get_proc_address)
     CreateInstance(ctx)
     vk.load_proc_addresses(get_proc_address)
@@ -215,6 +221,7 @@ InitVulkan :: proc(using ctx: ^VulkanContext, vertices: []Vertex, indices: []u32
     CreateDescriptorSetLayout(ctx)
     CreateGraphicsPipeline(ctx, "vert", "frag")
     CreateCommandPool(ctx)
+    CreateColorResources(ctx)
     CreateDepthResources(ctx)
     CreateFramebuffers(ctx)
     CreateTextureImage(ctx)
@@ -300,7 +307,7 @@ CreateTextureImage :: proc(using ctx: ^VulkanContext)
 
     stbi.image_free(pixels)
 
-    CreateImage(ctx, u32(texWidth), u32(texHeight), mipLevels, vk.Format.R8G8B8A8_SRGB, vk.ImageTiling.OPTIMAL, {vk.ImageUsageFlag.TRANSFER_SRC, vk.ImageUsageFlag.TRANSFER_DST, vk.ImageUsageFlag.SAMPLED}, {vk.MemoryPropertyFlag.DEVICE_LOCAL}, &textureImage)
+    CreateImage(ctx, u32(texWidth), u32(texHeight), mipLevels, vk.SampleCountFlag._1, vk.Format.R8G8B8A8_SRGB, vk.ImageTiling.OPTIMAL, {vk.ImageUsageFlag.TRANSFER_SRC, vk.ImageUsageFlag.TRANSFER_DST, vk.ImageUsageFlag.SAMPLED}, {vk.MemoryPropertyFlag.DEVICE_LOCAL}, &textureImage)
 
     TransitionImageLayout(ctx, textureImage.image, .R8G8B8A8_SRGB, .UNDEFINED, .TRANSFER_DST_OPTIMAL, mipLevels)
     CopyBufferToImage(ctx, stagingBuffer.buffer, textureImage.image, u32(texWidth), u32(texHeight))
@@ -311,7 +318,7 @@ CreateTextureImage :: proc(using ctx: ^VulkanContext)
     GenerateMipmaps(ctx, textureImage.image, .R8G8B8_SRGB, texWidth, texHeight)
 }
 
-CreateImage :: proc(using ctx: ^VulkanContext, width, height, mips: u32, format: vk.Format, tiling: vk.ImageTiling, usage: vk.ImageUsageFlags, properties: vk.MemoryPropertyFlags, image: ^TexImage)
+CreateImage :: proc(using ctx: ^VulkanContext, width, height, mips: u32, numSamples: vk.SampleCountFlag, format: vk.Format, tiling: vk.ImageTiling, usage: vk.ImageUsageFlags, properties: vk.MemoryPropertyFlags, image: ^TexImage)
 {
     imageInfo: vk.ImageCreateInfo
     imageInfo.sType = .IMAGE_CREATE_INFO
@@ -325,7 +332,7 @@ CreateImage :: proc(using ctx: ^VulkanContext, width, height, mips: u32, format:
     imageInfo.tiling = tiling
     imageInfo.initialLayout = .UNDEFINED
     imageInfo.usage = usage
-    imageInfo.samples = {._1}
+    imageInfo.samples = {numSamples}
     imageInfo.sharingMode = .EXCLUSIVE
 
     if res := vk.CreateImage(device, &imageInfo, nil, &image.image); res != .SUCCESS {
@@ -469,7 +476,7 @@ CreateTextureSampler :: proc(using ctx: ^VulkanContext)
     samplerInfo.compareOp = .ALWAYS
     samplerInfo.mipmapMode = .LINEAR
     samplerInfo.mipLodBias = 0.0
-    samplerInfo.minLod = f32(mipLevels / 2)
+    samplerInfo.minLod = 0
     samplerInfo.maxLod = f32(mipLevels)
 
     if res := vk.CreateSampler(device, &samplerInfo, nil, &textureSampler); res != .SUCCESS {
@@ -557,6 +564,27 @@ GenerateMipmaps :: proc(using ctx: ^VulkanContext, image: vk.Image, format: vk.F
     EndSingleTimeCommands(ctx, &cmdBuffer)
 }
 
+GetMaxUsableSampleCount :: proc(using ctx: ^VulkanContext, dev: vk.PhysicalDevice) -> vk.SampleCountFlag{
+    vk.GetPhysicalDeviceProperties(dev, &physicalDeviceProps)
+
+    counts := physicalDeviceProps.limits.framebufferColorSampleCounts & physicalDeviceProps.limits.framebufferDepthSampleCounts
+    if vk.SampleCountFlag._64 in (counts & {vk.SampleCountFlag._64}) { return vk.SampleCountFlag._64}
+    if vk.SampleCountFlag._32 in (counts & {vk.SampleCountFlag._32}) { return vk.SampleCountFlag._32}
+    if vk.SampleCountFlag._16 in (counts & {vk.SampleCountFlag._16}) { return vk.SampleCountFlag._16}
+    if vk.SampleCountFlag._8 in (counts & {vk.SampleCountFlag._8}) { return vk.SampleCountFlag._8}
+    if vk.SampleCountFlag._4 in (counts & {vk.SampleCountFlag._4}) { return vk.SampleCountFlag._4}
+    if vk.SampleCountFlag._2 in (counts & {vk.SampleCountFlag._2}) { return vk.SampleCountFlag._2}
+
+    return vk.SampleCountFlag._1
+}
+
+CreateColorResources :: proc(using ctx: ^VulkanContext)
+{
+    colorFormat := swapchain.format.format
+
+    CreateImage(ctx, swapchain.extent.width, swapchain.extent.height, 1, msaaSamples, colorFormat, .OPTIMAL, {vk.ImageUsageFlag.TRANSIENT_ATTACHMENT, vk.ImageUsageFlag.COLOR_ATTACHMENT}, {.DEVICE_LOCAL}, &colorImage)
+    colorImageView = CreateImageView(ctx, colorImage.image, colorFormat, {.COLOR}, 1)
+}
 
 // ██████  ███████ ██████  ████████ ██   ██ 
 // ██   ██ ██      ██   ██    ██    ██   ██ 
@@ -569,7 +597,7 @@ CreateDepthResources :: proc(using ctx: ^VulkanContext)
 {
     depthFormat := FindDepthFormat(ctx)
 
-    CreateImage(ctx, swapchain.extent.width, swapchain.extent.height, 1, depthFormat, .OPTIMAL, {.DEPTH_STENCIL_ATTACHMENT}, {.DEVICE_LOCAL}, &depthImage)
+    CreateImage(ctx, swapchain.extent.width, swapchain.extent.height, 1, msaaSamples, depthFormat, .OPTIMAL, {.DEPTH_STENCIL_ATTACHMENT}, {.DEVICE_LOCAL}, &depthImage)
     depthImageView = CreateImageView(ctx, depthImage.image, depthFormat, {.DEPTH}, 1)
 }
 
@@ -701,7 +729,7 @@ CreateGraphicsPipeline :: proc(using ctx: ^VulkanContext, vsName: string, fsName
     multisampling: vk.PipelineMultisampleStateCreateInfo
     multisampling.sType = .PIPELINE_MULTISAMPLE_STATE_CREATE_INFO
     multisampling.sampleShadingEnable = false
-    multisampling.rasterizationSamples = {._1}
+    multisampling.rasterizationSamples = {msaaSamples}
     multisampling.minSampleShading = 1.0
     multisampling.pSampleMask = nil
     multisampling.alphaToCoverageEnable = false
@@ -786,23 +814,33 @@ CreateRenderPass :: proc(using ctx: ^VulkanContext)
 {
     colorAttachment: vk.AttachmentDescription
     colorAttachment.format = swapchain.format.format
-    colorAttachment.samples = {._1}
+    colorAttachment.samples = {msaaSamples}
     colorAttachment.loadOp = .CLEAR
     colorAttachment.storeOp = .STORE
     colorAttachment.stencilLoadOp = .DONT_CARE
     colorAttachment.stencilStoreOp = .DONT_CARE
     colorAttachment.initialLayout = .UNDEFINED
-    colorAttachment.finalLayout = .PRESENT_SRC_KHR
+    colorAttachment.finalLayout = .COLOR_ATTACHMENT_OPTIMAL
 
     depthAttachment: vk.AttachmentDescription
     depthAttachment.format = FindDepthFormat(ctx)
-    depthAttachment.samples = {._1}
+    depthAttachment.samples = {msaaSamples}
     depthAttachment.loadOp = .CLEAR
     depthAttachment.storeOp = .DONT_CARE
     depthAttachment.stencilLoadOp = .DONT_CARE
     depthAttachment.stencilStoreOp = .DONT_CARE
     depthAttachment.initialLayout = .UNDEFINED
     depthAttachment.finalLayout = .DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+
+    colorAttachmentResolve: vk.AttachmentDescription
+    colorAttachmentResolve.format = swapchain.format.format
+    colorAttachmentResolve.samples = {._1}
+    colorAttachmentResolve.loadOp = .DONT_CARE
+    colorAttachmentResolve.storeOp = .STORE
+    colorAttachmentResolve.stencilLoadOp = .DONT_CARE
+    colorAttachmentResolve.stencilStoreOp = .DONT_CARE
+    colorAttachmentResolve.initialLayout = .UNDEFINED
+    colorAttachmentResolve.finalLayout = .PRESENT_SRC_KHR
 
     colorAttachmentRef: vk.AttachmentReference
     colorAttachmentRef.attachment = 0
@@ -812,13 +850,18 @@ CreateRenderPass :: proc(using ctx: ^VulkanContext)
     depthAttachmentRef.attachment = 1
     depthAttachmentRef.layout = .DEPTH_STENCIL_ATTACHMENT_OPTIMAL
 
-    attachments := []vk.AttachmentDescription{colorAttachment, depthAttachment}
+    colorAttachmentResolveRef: vk.AttachmentReference
+    colorAttachmentResolveRef.attachment = 2
+    colorAttachmentResolveRef.layout = .COLOR_ATTACHMENT_OPTIMAL
+
+    attachments := []vk.AttachmentDescription{colorAttachment, depthAttachment, colorAttachmentResolve}
 
     subpass: vk.SubpassDescription
     subpass.pipelineBindPoint = .GRAPHICS
     subpass.colorAttachmentCount = 1
     subpass.pColorAttachments = &colorAttachmentRef
     subpass.pDepthStencilAttachment = &depthAttachmentRef
+    subpass.pResolveAttachments = &colorAttachmentResolveRef
 
     dependency: vk.SubpassDependency
     dependency.srcSubpass = vk.SUBPASS_EXTERNAL
@@ -1680,12 +1723,16 @@ RecreateSwapchain :: proc(using ctx: ^VulkanContext)
     // }
 
     CreateImageViews(ctx)
+    CreateColorResources(ctx)
     CreateDepthResources(ctx)
     CreateFramebuffers(ctx)
 }
 
 CleanupSwapchain :: proc(using ctx: ^VulkanContext)
 {
+    vk.DestroyImageView(device, colorImageView, nil)
+    vk.DestroyImage(device, colorImage.image, nil)
+    vk.FreeMemory(device, colorImage.memory, nil)
     vk.DestroyImageView(device, depthImageView, nil)
     vk.DestroyImage(device, depthImage.image, nil)
     vk.FreeMemory(device, depthImage.memory, nil)
@@ -1706,7 +1753,7 @@ CreateFramebuffers :: proc(using ctx: ^VulkanContext)
     swapchain.framebuffers = make([]vk.Framebuffer, len(swapchain.imageViews))
     for v, i in swapchain.imageViews
     {
-        attachments := [?]vk.ImageView{v, depthImageView}
+        attachments := [?]vk.ImageView{colorImageView, depthImageView, v}
 
         framebufferInfo: vk.FramebufferCreateInfo
         framebufferInfo.sType = .FRAMEBUFFER_CREATE_INFO
@@ -1769,6 +1816,7 @@ PickDevice :: proc(using ctx: ^VulkanContext)
         score := RateSuitability(ctx, dev, idx)
         if score > hiscore{
             physicalDevice = dev
+            msaaSamples = GetMaxUsableSampleCount(ctx, dev)
             hiscore = score
         }
         idx += 1
