@@ -221,7 +221,9 @@ InitVulkan :: proc(using ctx: ^VulkanContext, vertices: []Vertex, indices: []u32
     CreateDescriptorSetLayout(ctx)
     CreateGraphicsPipeline(ctx, "vert", "frag")
     CreateCommandPool(ctx)
-    CreateColorResources(ctx)
+    if MSAA_ENABLED {
+        CreateColorResources(ctx)
+    }
     CreateDepthResources(ctx)
     CreateFramebuffers(ctx)
     CreateTextureImage(ctx)
@@ -291,7 +293,9 @@ CreateTextureImage :: proc(using ctx: ^VulkanContext)
     texWidth, texHeight, texChannels: i32
     pixels := stbi.load(objTex, &texWidth, &texHeight, &texChannels, 4)
     imageSize := vk.DeviceSize(texWidth * texHeight * 4)
-    mipLevels = cast(u32)m.floor(m.log2(cast(f32)m.max(texWidth, texHeight))) + 1
+    if MIPMAPS_ENABLED {
+        mipLevels = cast(u32)m.floor(m.log2(cast(f32)m.max(texWidth, texHeight))) + 1
+    }
 
     if pixels == nil {
         LogError("Failed to load Texture Image!")
@@ -729,7 +733,11 @@ CreateGraphicsPipeline :: proc(using ctx: ^VulkanContext, vsName: string, fsName
     multisampling: vk.PipelineMultisampleStateCreateInfo
     multisampling.sType = .PIPELINE_MULTISAMPLE_STATE_CREATE_INFO
     multisampling.sampleShadingEnable = false
-    multisampling.rasterizationSamples = {msaaSamples}
+    if MSAA_ENABLED {
+        multisampling.rasterizationSamples = {msaaSamples}
+    } else {
+        multisampling.rasterizationSamples = {._1}
+    }
     multisampling.minSampleShading = 1.0
     multisampling.pSampleMask = nil
     multisampling.alphaToCoverageEnable = false
@@ -820,7 +828,11 @@ CreateRenderPass :: proc(using ctx: ^VulkanContext)
     colorAttachment.stencilLoadOp = .DONT_CARE
     colorAttachment.stencilStoreOp = .DONT_CARE
     colorAttachment.initialLayout = .UNDEFINED
-    colorAttachment.finalLayout = .COLOR_ATTACHMENT_OPTIMAL
+    if MSAA_ENABLED {
+        colorAttachment.finalLayout = .COLOR_ATTACHMENT_OPTIMAL
+    } else {
+        colorAttachment.finalLayout = .PRESENT_SRC_KHR
+    }
 
     depthAttachment: vk.AttachmentDescription
     depthAttachment.format = FindDepthFormat(ctx)
@@ -854,14 +866,21 @@ CreateRenderPass :: proc(using ctx: ^VulkanContext)
     colorAttachmentResolveRef.attachment = 2
     colorAttachmentResolveRef.layout = .COLOR_ATTACHMENT_OPTIMAL
 
-    attachments := []vk.AttachmentDescription{colorAttachment, depthAttachment, colorAttachmentResolve}
+    attachments: []vk.AttachmentDescription
+    if MSAA_ENABLED {
+        attachments = []vk.AttachmentDescription{colorAttachment, depthAttachment, colorAttachmentResolve}
+    } else {
+        attachments = []vk.AttachmentDescription{colorAttachment, depthAttachment}
+    }
 
     subpass: vk.SubpassDescription
     subpass.pipelineBindPoint = .GRAPHICS
     subpass.colorAttachmentCount = 1
     subpass.pColorAttachments = &colorAttachmentRef
     subpass.pDepthStencilAttachment = &depthAttachmentRef
-    subpass.pResolveAttachments = &colorAttachmentResolveRef
+    if MSAA_ENABLED {
+        subpass.pResolveAttachments = &colorAttachmentResolveRef
+    }
 
     dependency: vk.SubpassDependency
     dependency.srcSubpass = vk.SUBPASS_EXTERNAL
@@ -1730,9 +1749,11 @@ RecreateSwapchain :: proc(using ctx: ^VulkanContext)
 
 CleanupSwapchain :: proc(using ctx: ^VulkanContext)
 {
-    vk.DestroyImageView(device, colorImageView, nil)
-    vk.DestroyImage(device, colorImage.image, nil)
-    vk.FreeMemory(device, colorImage.memory, nil)
+    if MSAA_ENABLED {
+        vk.DestroyImageView(device, colorImageView, nil)
+        vk.DestroyImage(device, colorImage.image, nil)
+        vk.FreeMemory(device, colorImage.memory, nil)
+    }
     vk.DestroyImageView(device, depthImageView, nil)
     vk.DestroyImage(device, depthImage.image, nil)
     vk.FreeMemory(device, depthImage.memory, nil)
@@ -1753,7 +1774,12 @@ CreateFramebuffers :: proc(using ctx: ^VulkanContext)
     swapchain.framebuffers = make([]vk.Framebuffer, len(swapchain.imageViews))
     for v, i in swapchain.imageViews
     {
-        attachments := [?]vk.ImageView{colorImageView, depthImageView, v}
+        attachments: []vk.ImageView
+        if MSAA_ENABLED {
+            attachments = []vk.ImageView{colorImageView, depthImageView, v}
+        } else {
+            attachments = []vk.ImageView{v, depthImageView}
+        }
 
         framebufferInfo: vk.FramebufferCreateInfo
         framebufferInfo.sType = .FRAMEBUFFER_CREATE_INFO
@@ -1816,7 +1842,9 @@ PickDevice :: proc(using ctx: ^VulkanContext)
         score := RateSuitability(ctx, dev, idx)
         if score > hiscore{
             physicalDevice = dev
-            msaaSamples = GetMaxUsableSampleCount(ctx, dev)
+            if MSAA_ENABLED {
+                msaaSamples = GetMaxUsableSampleCount(ctx, dev)
+            }
             hiscore = score
         }
         idx += 1

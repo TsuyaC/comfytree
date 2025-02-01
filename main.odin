@@ -18,6 +18,8 @@ HEIGHT :: 1080
 TITLE :: "Comfytree"
 DETAILED_INFO :: false  // Currently used only for Vulkan (OpenGL not implemented)
 LOG_MINIMAL :: true     // Only log errors
+MSAA_ENABLED :: false
+MIPMAPS_ENABLED :: true
 
 objName :: "./mesh/viking_room.obj"
 objTex  :: "./textures/viking_room.png"
