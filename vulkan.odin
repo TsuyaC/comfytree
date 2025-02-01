@@ -319,7 +319,7 @@ CreateTextureImage :: proc(using ctx: ^VulkanContext)
     vk.DestroyBuffer(device, stagingBuffer.buffer, nil)
     vk.FreeMemory(device, stagingBuffer.memory, nil)
 
-    GenerateMipmaps(ctx, textureImage.image, .R8G8B8_SRGB, texWidth, texHeight)
+    GenerateMipmaps(ctx, textureImage.image, .R8G8B8A8_SRGB, texWidth, texHeight)
 }
 
 CreateImage :: proc(using ctx: ^VulkanContext, width, height, mips: u32, numSamples: vk.SampleCountFlag, format: vk.Format, tiling: vk.ImageTiling, usage: vk.ImageUsageFlags, properties: vk.MemoryPropertyFlags, image: ^TexImage)
@@ -622,7 +622,7 @@ FindSupportedFormat :: proc(using ctx: ^VulkanContext, candidates: ^[]vk.Format,
         if tiling == .LINEAR && (props.linearTilingFeatures & features) == features {
             res = format
             return res
-        } else if tiling == .OPTIMAL && (props.linearTilingFeatures & features) == features {
+        } else if tiling == .OPTIMAL && (props.optimalTilingFeatures & features) == features {
             res = format
             return res
         }
@@ -1749,11 +1749,9 @@ RecreateSwapchain :: proc(using ctx: ^VulkanContext)
 
 CleanupSwapchain :: proc(using ctx: ^VulkanContext)
 {
-    if MSAA_ENABLED {
-        vk.DestroyImageView(device, colorImageView, nil)
-        vk.DestroyImage(device, colorImage.image, nil)
-        vk.FreeMemory(device, colorImage.memory, nil)
-    }
+    vk.DestroyImageView(device, colorImageView, nil)
+    vk.DestroyImage(device, colorImage.image, nil)
+    vk.FreeMemory(device, colorImage.memory, nil)
     vk.DestroyImageView(device, depthImageView, nil)
     vk.DestroyImage(device, depthImage.image, nil)
     vk.FreeMemory(device, depthImage.memory, nil)
