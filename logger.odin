@@ -51,11 +51,13 @@ Log :: proc(type: LogType, msg: string, location: runtime.Source_Code_Location, 
 
 LogInfo :: proc(msg: string, location:=#caller_location, isDetailed: bool = false)
 {
+    if LOG_MINIMAL { return }
     Log(LogType.Normal, msg, location, (isDetailed && IS_DETAILED))
 }
 
 LogWarning :: proc(msg: string, location:=#caller_location, isDetailed: bool = true)
 {
+    if LOG_MINIMAL { return }
     Log(LogType.Warning, msg, location, (isDetailed && IS_DETAILED))
 }
 

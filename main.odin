@@ -17,6 +17,7 @@ WIDTH :: 1920
 HEIGHT :: 1080
 TITLE :: "Comfytree"
 DETAILED_INFO :: false  // Currently used only for Vulkan (OpenGL not implemented)
+LOG_MINIMAL :: true     // Only log errors
 
 objName :: "./mesh/viking_room.obj"
 objTex  :: "./textures/viking_room.png"
@@ -48,7 +49,7 @@ CleanupBackend :: proc(using ctx: ^VulkanContext, api: API)
 
 main :: proc()
 {
-    fmt.println("\x1b[92mComfytree\x1b[0m\n")
+    fmt.println("\x1b[92mComfytree\x1b[0m")
     // Vulkan
     api: API = .Vulkan
     using ctx : VulkanContext
