@@ -66,7 +66,7 @@ ReadTexCoordData :: proc(entry: []string) -> [2]f32
 {
     return {
         cast(f32)strconv.atof(entry[1]),
-        1 - cast(f32)strconv.atof(entry[2])
+        FLIP_UV ? 1 - cast(f32)strconv.atof(entry[2]) :  cast(f32)strconv.atof(entry[2])
     }
 }
 
