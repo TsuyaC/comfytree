@@ -1729,6 +1729,8 @@ RecreateSwapchain :: proc(using ctx: ^VulkanContext)
     }
     vk.DeviceWaitIdle(device)
 
+    mipLevels = 1
+
     CleanupSwapchain(ctx)
 
     QuerySwapchainDetails(ctx, physicalDevice)
@@ -1742,7 +1744,9 @@ RecreateSwapchain :: proc(using ctx: ^VulkanContext)
     // }
 
     CreateImageViews(ctx)
-    CreateColorResources(ctx)
+    if MSAA_ENABLED {
+        CreateColorResources(ctx)
+    }
     CreateDepthResources(ctx)
     CreateFramebuffers(ctx)
 }
