@@ -504,15 +504,18 @@ RecordCommandBufferDR :: proc(using ctx: ^VulkanContext, buffer: vk.CommandBuffe
 
     colorAttachmentInfo: vk.RenderingAttachmentInfo
     colorAttachmentInfo.sType = .RENDERING_ATTACHMENT_INFO
-    colorAttachmentInfo.imageView = colorImageView
-    colorAttachmentInfo.imageLayout = .ATTACHMENT_OPTIMAL
     colorAttachmentInfo.loadOp = .CLEAR
     colorAttachmentInfo.storeOp = .STORE
     colorAttachmentInfo.clearValue = clearColors[0]
     if MSAA_ENABLED {
+        colorAttachmentInfo.imageView = colorImageView
+        colorAttachmentInfo.imageLayout = .ATTACHMENT_OPTIMAL
         colorAttachmentInfo.resolveMode = {.AVERAGE}
         colorAttachmentInfo.resolveImageView = swapchain.imageViews[imageIndex]
         colorAttachmentInfo.resolveImageLayout = .COLOR_ATTACHMENT_OPTIMAL
+    } else {
+        colorAttachmentInfo.imageView = swapchain.imageViews[imageIndex]
+        colorAttachmentInfo.imageLayout = .COLOR_ATTACHMENT_OPTIMAL
     }
 
     depthAttachment: vk.RenderingAttachmentInfo
