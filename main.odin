@@ -16,11 +16,15 @@ import vk "vendor:vulkan"
 WIDTH :: 1920
 HEIGHT :: 1080
 TITLE :: "Comfytree"
-DETAILED_INFO :: false  // Currently used only for Vulkan (OpenGL not implemented)
-LOG_MINIMAL :: false     // Only log errors
+DETAILED_INFO :: false      // Currently used only for Vulkan (OpenGL not implemented)
+LOG_MINIMAL :: false        // Only log errors
+
+// Currently doesn't work with dynamic rendering
 MSAA_ENABLED :: false
 MIPMAPS_ENABLED :: false
-FLIP_UV :: true         // flips vertical part of UV coords (use for vulkan)
+FLIP_UV :: true             // flips vertical part of UV coords (use for vulkan)
+
+DYNAMIC_RENDERING :: true
 
 objName :: "./mesh/viking_room.obj"
 objTex  :: "./textures/viking_room.png"
@@ -35,7 +39,12 @@ InitBackend :: proc(using ctx: ^VulkanContext, api: API, vertices: []Vertex, ind
     if api == .Vulkan {
         fmt.println("\x1b[92mUsing Vulkan Backend\x1b[0m\n")
         InitWindow(ctx)
-        InitVulkan(ctx, vertices, indices)
+
+        if DYNAMIC_RENDERING {
+            InitVulkanDR(ctx, vertices, indices)
+        } else {
+            InitVulkan(ctx, vertices, indices)
+        }
     }
 }
 
@@ -46,7 +55,11 @@ CleanupBackend :: proc(using ctx: ^VulkanContext, api: API)
     }
 
     if api == .Vulkan {
-        CleanupVulkan(ctx)
+        if DYNAMIC_RENDERING {
+            CleanupVulkanDR(ctx)
+        } else {
+            CleanupVulkan(ctx)
+        }
     }
 }
 
@@ -63,10 +76,20 @@ main :: proc()
     for !glfw.WindowShouldClose(window)
     {
         glfw.PollEvents()
+
         if glfw.PRESS == glfw.GetKey(window, glfw.KEY_F5) {
-            ReloadShaderModules(&ctx)
+            if DYNAMIC_RENDERING {
+                ReloadShaderModulesDR(&ctx)
+            } else {
+                ReloadShaderModules(&ctx)
+            }
         }
-        DrawFrame(&ctx, verticesObj[:], indicesObj[:])
+
+        if DYNAMIC_RENDERING {
+            DrawFrameDR(&ctx, verticesObj[:], indicesObj[:])
+        } else {
+            DrawFrame(&ctx, verticesObj[:], indicesObj[:])
+        }
     }
 
     CleanupBackend(&ctx, api)
