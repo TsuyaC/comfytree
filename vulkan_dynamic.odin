@@ -74,7 +74,6 @@ InitVulkanDR :: proc(using ctx: ^VulkanContext,  vertices: []Vertex, indices: []
         CreateColorResources(ctx)
     }
     CreateDepthResources(ctx)
-    // CreateFramebuffers(ctx)
     CreateTextureImage(ctx)
     CreateTextureImageView(ctx)
     CreateTextureSampler(ctx)
@@ -269,10 +268,6 @@ CleanupSwapchainDR :: proc(using ctx: ^VulkanContext)
     vk.DestroyImage(device, depthImage.image, nil)
     vk.FreeMemory(device, depthImage.memory, nil)
 
-    // for f in swapchain.framebuffers
-    // {
-    //     vk.DestroyFramebuffer(device, f, nil)
-    // }
     for view in swapchain.imageViews
     {
         vk.DestroyImageView(device, view, nil)
