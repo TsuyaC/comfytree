@@ -122,7 +122,6 @@ Vertex :: struct {
     normals:    glm.vec3
 }
 
-@(private="file")
 Buffer :: struct {
     buffer:     vk.Buffer,
     memory:     vk.DeviceMemory,
@@ -130,25 +129,21 @@ Buffer :: struct {
     size:       vk.DeviceSize
 }
 
-@(private="file")
 TexImage :: struct {
     image:  vk.Image,
     memory: vk.DeviceMemory,
 }
 
-@(private="file")
 QueueFamily :: enum {
     Graphics,
     Present,
 }
 
-@(private="file")
 QueueError :: enum {
     None,
     NoGraphicsBit,
 }
 
-@(private="file")
 Swapchain :: struct {
     handle:         vk.SwapchainKHR,
     images:         []vk.Image,
@@ -161,14 +156,12 @@ Swapchain :: struct {
     framebuffers:   []vk.Framebuffer
 }
 
-@(private="file")
 SwapchainDetails :: struct {
     capabilities:   vk.SurfaceCapabilitiesKHR,
     formats:        []vk.SurfaceFormatKHR,
     presentModes:   []vk.PresentModeKHR
 }
 
-@(private="file")
 Pipeline :: struct {
     handle:     vk.Pipeline,
     renderPass: vk.RenderPass,
@@ -313,7 +306,7 @@ CreateTextureImage :: proc(using ctx: ^VulkanContext)
 
     CreateImage(ctx, u32(texWidth), u32(texHeight), mipLevels, vk.SampleCountFlag._1, vk.Format.R8G8B8A8_SRGB, vk.ImageTiling.OPTIMAL, {vk.ImageUsageFlag.TRANSFER_SRC, vk.ImageUsageFlag.TRANSFER_DST, vk.ImageUsageFlag.SAMPLED}, {vk.MemoryPropertyFlag.DEVICE_LOCAL}, &textureImage)
 
-    TransitionImageLayout(ctx, textureImage.image, .R8G8B8A8_SRGB, .UNDEFINED, .TRANSFER_DST_OPTIMAL, mipLevels)
+    TransitionImageLayout(ctx, textureImage.image, .UNDEFINED, .TRANSFER_DST_OPTIMAL, mipLevels)
     CopyBufferToImage(ctx, stagingBuffer.buffer, textureImage.image, u32(texWidth), u32(texHeight))
 
     vk.DestroyBuffer(device, stagingBuffer.buffer, nil)
@@ -360,7 +353,7 @@ CreateImage :: proc(using ctx: ^VulkanContext, width, height, mips: u32, numSamp
     vk.BindImageMemory(device, image.image, image.memory, 0)
 }
 
-TransitionImageLayout :: proc(using ctx: ^VulkanContext, image: vk.Image, format: vk.Format, oldLayout, newLayout: vk.ImageLayout, mips: u32)
+TransitionImageLayout :: proc(using ctx: ^VulkanContext, image: vk.Image, oldLayout, newLayout: vk.ImageLayout, mips: u32)
 {
     cmdBuffer := BeginSingleTimeCommands(ctx)
 
