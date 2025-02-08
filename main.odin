@@ -20,7 +20,7 @@ DETAILED_INFO :: false      // Currently used only for Vulkan (OpenGL not implem
 LOG_MINIMAL :: false        // Only log errors
 
 // Currently doesn't work with dynamic rendering
-MSAA_ENABLED :: false
+MSAA_ENABLED :: true
 MIPMAPS_ENABLED :: true
 FLIP_UV :: true             // flips vertical part of UV coords (use for vulkan)
 
