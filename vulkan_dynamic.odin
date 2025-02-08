@@ -574,7 +574,7 @@ TransitionImageDR :: proc(using ctx: ^VulkanContext, image: vk.Image, oldLayout,
     barrier.image = image
     barrier.subresourceRange.aspectMask = {.COLOR}
     barrier.subresourceRange.baseMipLevel = 0
-    barrier.subresourceRange.levelCount = mips
+    barrier.subresourceRange.levelCount = vk.REMAINING_MIP_LEVELS
     barrier.subresourceRange.baseArrayLayer = 0
     barrier.subresourceRange.layerCount = 1
 
