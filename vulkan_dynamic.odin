@@ -25,6 +25,10 @@ VALIDATION_LAYERS := [?]cstring{"VK_LAYER_KHRONOS_validation"};
 @(private="file")
 DEVICE_EXTENSIONS := [?]cstring{"VK_KHR_dynamic_rendering", "VK_KHR_swapchain"};
 
+PushConstants :: struct {
+    msaaEnabled: u32,
+}
+
 
 // ███████ ███████ ████████ ██    ██ ██████  
 // ██      ██         ██    ██    ██ ██   ██ 
@@ -342,6 +346,11 @@ CreateGraphicsPipelineDR :: proc(using ctx: ^VulkanContext, vsName: string, fsNa
 
     shaderStages := [?]vk.PipelineShaderStageCreateInfo{vsInfo, fsInfo}
 
+    pushConstantRange: vk.PushConstantRange
+    pushConstantRange.stageFlags = {.FRAGMENT}
+    pushConstantRange.offset = 0
+    pushConstantRange.size = size_of(PushConstants) 
+
     dynamicStates := [?]vk.DynamicState{.VIEWPORT, .SCISSOR}
     dynamicState: vk.PipelineDynamicStateCreateInfo
     dynamicState.sType = .PIPELINE_DYNAMIC_STATE_CREATE_INFO
@@ -436,8 +445,8 @@ CreateGraphicsPipelineDR :: proc(using ctx: ^VulkanContext, vsName: string, fsNa
     pipelineLayoutInfo.sType = .PIPELINE_LAYOUT_CREATE_INFO
     pipelineLayoutInfo.setLayoutCount = 1
     pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout
-    pipelineLayoutInfo.pushConstantRangeCount = 0
-    pipelineLayoutInfo.pPushConstantRanges = nil
+    pipelineLayoutInfo.pushConstantRangeCount = 1
+    pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange
 
     if res := vk.CreatePipelineLayout(device, &pipelineLayoutInfo, nil, &pipeline.layout); res != .SUCCESS {
         LogError("Failed to create Pipeline Layout!\n")
@@ -557,6 +566,9 @@ RecordCommandBufferDR :: proc(using ctx: ^VulkanContext, buffer: vk.CommandBuffe
     scissor.extent = swapchain.extent
     vk.CmdSetScissor(buffer, 0, 1, &scissor)
 
+    isAMD := (physicalDeviceProps.vendorID == 0x1002)
+    pushConstants := PushConstants{msaaEnabled = MSAA_ENABLED && isAMD ? 1 : 0}
+    vk.CmdPushConstants(buffer, pipeline.layout, {.FRAGMENT}, 0, size_of(pushConstants), &pushConstants)
     vk.CmdBindDescriptorSets(buffer, .GRAPHICS, pipeline.layout, 0, 1, &descriptorSets[curFrame], 0, nil)
 
     vk.CmdDrawIndexed(buffer, cast(u32)indexBuffer.length, 1, 0, 0, 0)
