@@ -25,8 +25,8 @@ FLIP_UV :: true             // flips vertical part of UV coords (use for vulkan)
 
 DYNAMIC_RENDERING :: true
 
-objName :: "./mesh/viking_room.obj"
-objTex  :: "./textures/viking_room.png"
+objName :: "./assets/mesh/viking_room.obj"
+objTex  :: "./assets/textures/viking_room.png"
 
 InitBackend :: proc(using ctx: ^VulkanContext, api: API, vertices: []Vertex, indices: []u32) 
 {
