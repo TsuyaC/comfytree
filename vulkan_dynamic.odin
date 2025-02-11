@@ -277,6 +277,11 @@ CleanupSwapchainDR :: proc(using ctx: ^VulkanContext)
         vk.DestroyImageView(device, view, nil)
     }
     vk.DestroySwapchainKHR(device, swapchain.handle, nil)
+    delete(swapchain.framebuffers)
+    delete(swapchain.imageViews)
+    delete(swapchain.images)
+    delete(swapchain.support.formats)
+    delete(swapchain.support.presentModes)
 }
 
 RecreateSwapchainDR :: proc(using ctx: ^VulkanContext)

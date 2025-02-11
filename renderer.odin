@@ -43,12 +43,6 @@ CleanupBackend :: proc(using ctx: ^VulkanContext, api: API)
 
         delete(uniformBuffers)
         delete(descriptorSets)
-        delete(swapchain.framebuffers)
-        delete(swapchain.imageViews)
-        delete(swapchain.images)
-        delete(swapchain.support.formats)
-        delete(swapchain.support.presentModes)
-
     }
 }
 
