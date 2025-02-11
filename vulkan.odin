@@ -196,7 +196,12 @@ InitVulkan :: proc(using ctx: ^VulkanContext, vertices: []Vertex, indices: []u32
     when DETAILED_INFO {
         fmt.print("\n")
         LogInfo("Extensions:")
-        for ext in &extensions do fmt.println(BytesToCstring(ext.extensionName))
+        for ext in &extensions
+        {
+            extName := BytesToCstring(ext.extensionName)
+            defer delete(extName)
+            fmt.println(extName)
+        }
     }
 
     CreateSurface(ctx)
@@ -675,6 +680,11 @@ CreateGraphicsPipeline :: proc(using ctx: ^VulkanContext, vsName: string, fsName
 
     shaderStages := [?]vk.PipelineShaderStageCreateInfo{vsInfo, fsInfo}
 
+    pushConstantRange: vk.PushConstantRange
+    pushConstantRange.stageFlags = {.FRAGMENT}
+    pushConstantRange.offset = 0
+    pushConstantRange.size = size_of(PushConstants) 
+
     dynamicStates := [?]vk.DynamicState{.VIEWPORT, .SCISSOR}
     dynamicState: vk.PipelineDynamicStateCreateInfo
     dynamicState.sType = .PIPELINE_DYNAMIC_STATE_CREATE_INFO
@@ -769,8 +779,8 @@ CreateGraphicsPipeline :: proc(using ctx: ^VulkanContext, vsName: string, fsName
     pipelineLayoutInfo.sType = .PIPELINE_LAYOUT_CREATE_INFO
     pipelineLayoutInfo.setLayoutCount = 1
     pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout
-    pipelineLayoutInfo.pushConstantRangeCount = 0
-    pipelineLayoutInfo.pPushConstantRanges = nil
+    pipelineLayoutInfo.pushConstantRangeCount = 1
+    pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange
 
     if res := vk.CreatePipelineLayout(device, &pipelineLayoutInfo, nil, &pipeline.layout); res != .SUCCESS {
         LogError("Failed to create Pipeline Layout!\n")
@@ -1060,6 +1070,9 @@ RecordCommandBuffer :: proc(using ctx: ^VulkanContext, buffer: vk.CommandBuffer,
     scissor.extent = swapchain.extent
     vk.CmdSetScissor(buffer, 0, 1, &scissor)
 
+    isAMD := (physicalDeviceProps.vendorID == 0x1002)
+    pushConstants := PushConstants{msaaEnabled = MSAA_ENABLED && isAMD ? 1 : 0}
+    vk.CmdPushConstants(buffer, pipeline.layout, {.FRAGMENT}, 0, size_of(pushConstants), &pushConstants)
     vk.CmdBindDescriptorSets(buffer, .GRAPHICS, pipeline.layout, 0, 1, &descriptorSets[curFrame], 0, nil)
 
     vk.CmdDrawIndexed(buffer, cast(u32)indexBuffer.length, 1, 0, 0, 0)
@@ -1253,6 +1266,7 @@ UpdateUniformBuffer :: proc(using ctx: ^VulkanContext, currentImage: u32)
 CreateDescriptorPool :: proc(using ctx: ^VulkanContext)
 {
     poolSizes: [dynamic]vk.DescriptorPoolSize
+    defer delete(poolSizes)
     resize(&poolSizes, 2)
     poolSizes[0].type = .UNIFORM_BUFFER
     poolSizes[0].descriptorCount = cast(u32)MAX_FRAMES_IN_FLIGHT
@@ -1306,6 +1320,7 @@ CreateDescriptorSets :: proc(using ctx: ^VulkanContext)
 
         descriptorWrites: [dynamic]vk.WriteDescriptorSet
         resize(&descriptorWrites, 2)
+        defer delete(descriptorWrites)
         // Uniform Buffer
         descriptorWrites[0].sType = .WRITE_DESCRIPTOR_SET
         descriptorWrites[0].dstSet = descriptorSets[i]
@@ -1440,6 +1455,7 @@ CheckValidationLayerSupport :: proc(using ctx: ^VulkanContext) -> bool
     layerCount: u32
     vk.EnumerateInstanceLayerProperties(&layerCount, nil)
     layers := make([]vk.LayerProperties, layerCount)
+    defer delete(layers)
     vk.EnumerateInstanceLayerProperties(&layerCount, raw_data(layers))
 
     when DETAILED_INFO {
@@ -1457,7 +1473,9 @@ CheckValidationLayerSupport :: proc(using ctx: ^VulkanContext) -> bool
         layerFound := false
         for props in layers
         {
-            if name == BytesToCstring(props.layerName) {
+            lName := BytesToCstring(props.layerName)
+            defer delete(lName)
+            if name == lName {
                 layerFound = true
                 break
             }
@@ -1478,6 +1496,7 @@ CheckDeviceExtensionSupport :: proc(physDevice: vk.PhysicalDevice) -> bool
     vk.EnumerateDeviceExtensionProperties(physDevice, nil, &extensionCount, nil)
 
     availableExtensions := make([]vk.ExtensionProperties, extensionCount)
+    defer delete(availableExtensions)
     vk.EnumerateDeviceExtensionProperties(physDevice, nil, &extensionCount, raw_data(availableExtensions))
 
     for ext in DEVICE_EXTENSIONS
@@ -1485,7 +1504,9 @@ CheckDeviceExtensionSupport :: proc(physDevice: vk.PhysicalDevice) -> bool
         found: b32
         for available in &availableExtensions
         {
-            if BytesToCstring(available.extensionName) == ext{
+            availableExtName := BytesToCstring(available.extensionName)
+            defer delete(availableExtName)
+            if availableExtName == ext{
                 found = true
                 break
             }
@@ -1500,6 +1521,7 @@ GetExtensions :: proc() -> []vk.ExtensionProperties
     extensionCount: u32
     vk.EnumerateInstanceExtensionProperties(nil, &extensionCount, nil)
     extensions := make([]vk.ExtensionProperties, extensionCount)
+    defer delete(extensions)
     vk.EnumerateInstanceExtensionProperties(nil, &extensionCount, raw_data(extensions))
 
     return extensions
@@ -1804,6 +1826,7 @@ PickDevice :: proc(using ctx: ^VulkanContext)
     }
 
     devices := make([]vk.PhysicalDevice, deviceCount)
+    defer delete(devices)
     vk.EnumeratePhysicalDevices(instance, &deviceCount, raw_data(devices))
 
     RateSuitability :: proc(using ctx: ^VulkanContext, dev: vk.PhysicalDevice, idx: int) -> int
@@ -1864,6 +1887,7 @@ FindQueueFamilies :: proc(using ctx: ^VulkanContext)
     queueCount: u32
     vk.GetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueCount, nil)
     availableQueues := make([]vk.QueueFamilyProperties, queueCount)
+    defer delete(availableQueues)
     vk.GetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueCount, raw_data(availableQueues))
 
     for v, i in availableQueues
@@ -1931,6 +1955,7 @@ BytesToCstring :: proc (bytes: [256]u8) -> cstring
     bytess: [256]u8 = bytes
     str := strings.clone_from_bytes(bytess[:])
     cstr := strings.clone_to_cstring(str)
+    defer delete(str)
     return cstr
 }
 

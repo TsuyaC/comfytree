@@ -20,6 +20,12 @@ ObjModel :: struct {
 LoadObj :: proc(filename: string) -> ([]Vertex, [dynamic][3]f32, [dynamic]u32)
 {
     obj: ObjModel
+    defer {
+        delete(obj.v)
+        delete(obj.vt)
+        delete(obj.vn)
+        delete(obj.vertexMap)
+    }
 
     data, ok := os.read_entire_file(filename)
 
@@ -33,6 +39,7 @@ LoadObj :: proc(filename: string) -> ([]Vertex, [dynamic][3]f32, [dynamic]u32)
     for line in strings.split_lines_iterator(&it)
     {
         entry := strings.split(line, " ")
+        defer delete(entry)
         if entry[0] == "v" {
             append(&obj.v, ReadVertexData(entry))
         }
@@ -84,6 +91,7 @@ ReadFaceData :: proc(entry: []string, using obj: ^ObjModel)
     for i := 1; i <= len(entry)-1; i += 1
     {
         vertexData := strings.split(entry[i], "/")
+        defer delete(vertexData)
 
         posIdx := strconv.atoi(vertexData[0])
         texIdx := -1
