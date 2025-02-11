@@ -77,16 +77,4 @@ main :: proc()
 
     CleanupBackend(&ctx, api)
     CleanupGlfw(&ctx)
-    Cleanup(&ctx)
-}
-
-Cleanup :: proc(using ctx: ^VulkanContext)
-{
-    delete(uniformBuffers)
-    delete(descriptorSets)
-    delete(swapchain.framebuffers)
-    delete(swapchain.imageViews)
-    delete(swapchain.images)
-    delete(swapchain.support.formats)
-    delete(swapchain.support.presentModes)
 }

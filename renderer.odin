@@ -40,6 +40,15 @@ CleanupBackend :: proc(using ctx: ^VulkanContext, api: API)
         } else {
             CleanupVulkan(ctx)
         }
+
+        delete(uniformBuffers)
+        delete(descriptorSets)
+        delete(swapchain.framebuffers)
+        delete(swapchain.imageViews)
+        delete(swapchain.images)
+        delete(swapchain.support.formats)
+        delete(swapchain.support.presentModes)
+
     }
 }
 
