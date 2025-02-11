@@ -1,9 +1,7 @@
 package engine
 
 import "core:fmt"
-import "core:os"
 import "vendor:glfw"
-import vk "vendor:vulkan"
 
 
 // ███████ ███    ██  ██████  ██ ███    ██ ███████ 
@@ -28,40 +26,6 @@ DYNAMIC_RENDERING :: true
 objName :: "./assets/mesh/viking_room.obj"
 objTex  :: "./assets/textures/viking_room.png"
 
-InitBackend :: proc(using ctx: ^VulkanContext, api: API, vertices: []Vertex, indices: []u32) 
-{
-    if api == .OpenGL {
-        LogError("OPENGL NOT IMPLEMENTED!")
-        os.exit(1)
-    }
-
-    if api == .Vulkan {
-        fmt.println("\x1b[92mUsing Vulkan Backend\x1b[0m\n")
-        InitWindow(ctx)
-
-        if DYNAMIC_RENDERING {
-            InitVulkanDR(ctx, vertices, indices)
-        } else {
-            InitVulkan(ctx, vertices, indices)
-        }
-    }
-}
-
-CleanupBackend :: proc(using ctx: ^VulkanContext, api: API)
-{
-    if api == .OpenGL {
-        return
-    }
-
-    if api == .Vulkan {
-        if DYNAMIC_RENDERING {
-            CleanupVulkanDR(ctx)
-        } else {
-            CleanupVulkan(ctx)
-        }
-    }
-}
-
 main :: proc()
 {
     fmt.println("\x1b[92mComfytree\x1b[0m")
@@ -77,18 +41,10 @@ main :: proc()
         glfw.PollEvents()
 
         if glfw.PRESS == glfw.GetKey(window, glfw.KEY_F5) {
-            if DYNAMIC_RENDERING {
-                ReloadShaderModulesDR(&ctx)
-            } else {
-                ReloadShaderModules(&ctx)
-            }
+            ReloadShaders(&ctx)
         }
 
-        if DYNAMIC_RENDERING {
-            DrawFrameDR(&ctx, verticesObj[:], indicesObj[:])
-        } else {
-            DrawFrame(&ctx, verticesObj[:], indicesObj[:])
-        }
+        DrawFrame(&ctx, verticesObj[:], indicesObj[:])
     }
 
     CleanupBackend(&ctx, api)

@@ -1364,7 +1364,7 @@ CreateSyncObjects :: proc(using ctx: ^VulkanContext)
 // ██████  ██   ██ ██   ██  ███ ███  
 
 
-DrawFrame :: proc(using ctx: ^VulkanContext, vertices: []Vertex, indices: []u32)
+DrawFrameFB :: proc(using ctx: ^VulkanContext, vertices: []Vertex, indices: []u32)
 {
     vk.WaitForFences(device, 1, &inFlight[curFrame], true, max(u64))
     
